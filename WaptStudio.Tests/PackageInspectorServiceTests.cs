@@ -38,6 +38,28 @@ public sealed class PackageInspectorServiceTests : IDisposable
         Assert.True(result.HasInstaller);
     }
 
+    [Fact]
+    public async Task AnalyzePackageAsync_PrefersInstallCallOverPrintMessageForReferencedInstaller()
+    {
+        var packageFolder = Path.Combine(_rootDirectory, "pkg-with-print");
+        Directory.CreateDirectory(packageFolder);
+
+        await File.WriteAllTextAsync(
+            Path.Combine(packageFolder, "setup.py"),
+            "package = 'tis.sevenzip'\n" +
+            "version = '25.01'\n" +
+            "print(\"Installing: 7z2501.msi\")\n" +
+            "install_msi_if_needed(\"7z2501.msi\")\n");
+        await File.WriteAllTextAsync(Path.Combine(packageFolder, "control"), "package: tis.sevenzip\nversion: 25.01\n");
+        await File.WriteAllTextAsync(Path.Combine(packageFolder, "7z2501.msi"), "binary-placeholder");
+
+        var service = new PackageInspectorService();
+        var result = await service.AnalyzePackageAsync(packageFolder);
+
+        Assert.Equal("7z2501.msi", result.ReferencedInstallerName);
+        Assert.DoesNotContain(result.Warnings, warning => warning.Contains("Installing: 7z2501.msi", StringComparison.Ordinal));
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(_rootDirectory))

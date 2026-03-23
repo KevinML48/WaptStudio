@@ -171,6 +171,11 @@ Quand le mode dry-run est active:
 
 Ce mode est recommande pour verifier les templates de commande avant tout test reel.
 
+Limite V1 importante:
+
+- un `build-package` reel qui demande un mot de passe de certificat interactif n'est pas pilote directement dans l'UI
+- dans ce cas, WaptStudio ouvre une fenetre dediee avec la commande preparee, un bouton de copie, un bouton `Ouvrir PowerShell ici` et un rattachement simple du resultat manuel a l'historique
+
 ## Prerequis
 
 1. Windows
@@ -283,6 +288,16 @@ Le bouton `Diagnostic environnement` affiche un rapport detaille avec ces inform
 17. si tout est coherent, tester `Construire`, `Signer` ou `Uploader` en dry-run
 18. verifier que la commande est affichee dans les logs et historisee sans execution reelle
 19. desactiver ensuite le dry-run uniquement pour un test reel controle
+20. si `Construire` indique qu'une interaction certificat est requise, utiliser la fenetre `Workflow build manuel WAPT`
+21. cliquer sur `Copier la commande` si besoin
+22. cliquer sur `Ouvrir PowerShell ici`
+23. lancer la commande dans le terminal ouvert
+24. saisir le mot de passe du certificat quand WAPT le demande
+25. verifier que le paquet `.wapt` est genere
+26. revenir dans WaptStudio
+27. selectionner le `.wapt` genere dans la fenetre si vous voulez tracer le chemin exact
+28. cliquer sur `Marquer comme build manuel reussi`
+29. verifier dans l'historique la distinction entre `BuildManualPrepared` et `BuildManualConfirmed`
 
 ## Lecture des logs
 

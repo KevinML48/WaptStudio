@@ -59,7 +59,7 @@ public sealed partial class PackageInspectorService : IPackageInspectorService
             var setupPyContent = await File.ReadAllTextAsync(packageInfo.SetupPyPath, cancellationToken).ConfigureAwait(false);
             packageInfo.PackageName ??= ExtractSetupPyValue(setupPyContent, "package");
             packageInfo.Version ??= ExtractSetupPyValue(setupPyContent, "version");
-            packageInfo.ReferencedInstallerName ??= ExtractSetupPyValue(setupPyContent, "installer") ?? ExtractReferencedInstaller(setupPyContent);
+            packageInfo.ReferencedInstallerName ??= ExtractSetupPyValue(setupPyContent, "installer") ?? ExtractReferencedInstallerFromSetupPy(setupPyContent);
 
             if (packageInfo.InstallerPath is null)
             {
@@ -142,6 +142,15 @@ public sealed partial class PackageInspectorService : IPackageInspectorService
     {
         var match = Regex.Match(content, @"(?im)(?<installer>[^'""\r\n]+\.(msi|exe))");
         return match.Success ? match.Groups["installer"].Value : null;
+    }
+
+    private static string? ExtractReferencedInstallerFromSetupPy(string content)
+    {
+        var match = Regex.Match(
+            content,
+            @"(?im)^(?!\s*#).*?\binstall_(?:msi|exe)_if_needed\(\s*['""'](?<installer>[^'""\r\n]+\.(?:msi|exe))['""']");
+
+        return match.Success ? match.Groups["installer"].Value.Trim() : null;
     }
 
 }

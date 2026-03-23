@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Drawing;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
@@ -34,6 +35,8 @@ public sealed class MainForm : Form
     private readonly Button _testWaptButton = new() { Text = "Tester WAPT", AutoSize = true };
     private readonly Button _diagnosticEnvironmentButton = new() { Text = "Diagnostic environnement", AutoSize = true };
     private readonly Button _openPackageFolderButton = new() { Text = "Ouvrir dossier paquet", AutoSize = true };
+    private readonly Button _openPowerShellHereButton = new() { Text = "Ouvrir PowerShell ici", AutoSize = true };
+    private readonly Button _manualBuildButton = new() { Text = "Renseigner build manuel", AutoSize = true };
     private readonly Button _openLogsFolderButton = new() { Text = "Ouvrir dossier logs", AutoSize = true };
     private readonly Button _saveReportButton = new() { Text = "Sauvegarder rapport", AutoSize = true };
     private readonly Button _historyDetailsButton = new() { Text = "Voir detail historique", AutoSize = true };
@@ -43,6 +46,8 @@ public sealed class MainForm : Form
     private AppSettings _settings = new();
     private string _lastActionResult = "Aucune action";
     private IReadOnlyList<HistoryEntry> _historyEntries = Array.Empty<HistoryEntry>();
+    private string? _lastPreparedManualBuildCommand;
+    private string? _lastPreparedManualBuildPackageFolder;
 
     public MainForm(AppRuntime runtime)
     {
@@ -155,6 +160,8 @@ public sealed class MainForm : Form
             _testWaptButton,
             _diagnosticEnvironmentButton,
             _openPackageFolderButton,
+            _openPowerShellHereButton,
+            _manualBuildButton,
             _openLogsFolderButton,
             _saveReportButton,
             _historyDetailsButton
@@ -197,6 +204,8 @@ public sealed class MainForm : Form
         _testWaptButton.Click += async (_, _) => await TestWaptAsync().ConfigureAwait(true);
         _diagnosticEnvironmentButton.Click += async (_, _) => await ShowEnvironmentDiagnosticsAsync().ConfigureAwait(true);
         _openPackageFolderButton.Click += (_, _) => OpenPackageFolder();
+        _openPowerShellHereButton.Click += (_, _) => OpenPowerShellHere();
+        _manualBuildButton.Click += async (_, _) => await ShowManualBuildWorkflowAsync().ConfigureAwait(true);
         _openLogsFolderButton.Click += (_, _) => OpenFolder(AppPaths.ResolveLogsDirectory(_settings));
         _saveReportButton.Click += async (_, _) => await SaveReportAsync().ConfigureAwait(true);
         _historyDetailsButton.Click += async (_, _) => await ShowSelectedHistoryDetailsAsync().ConfigureAwait(true);
@@ -353,8 +362,19 @@ public sealed class MainForm : Form
 
             var result = await action(_runtime).ConfigureAwait(true);
             AppendCommandResult(result);
-            SetActionResult($"{actionType}: {result.Summary}");
-            await RegisterHistoryAsync(actionType, result.IsSuccess, packageFolder, _currentPackage?.PackageName, result.Summary, result, _currentPackage?.Version, _currentPackage?.Version).ConfigureAwait(true);
+            var actionMessage = BuildActionResultMessage(actionType, result);
+            SetCommandActionResult(actionMessage, result);
+
+            var historyActionType = actionType;
+            if (string.Equals(actionType, "Build", StringComparison.OrdinalIgnoreCase) && result.RequiresUserInteraction)
+            {
+                historyActionType = "BuildManualPrepared";
+                _lastPreparedManualBuildCommand = result.ExecutedCommand;
+                _lastPreparedManualBuildPackageFolder = packageFolder;
+                await ShowManualBuildWorkflowAsync(result.ExecutedCommand, packageFolder).ConfigureAwait(true);
+            }
+
+            await RegisterHistoryAsync(historyActionType, result.IsSuccess, packageFolder, _currentPackage?.PackageName, actionMessage, result, _currentPackage?.Version, _currentPackage?.Version).ConfigureAwait(true);
             await RefreshWaptStatusAsync().ConfigureAwait(true);
         }
         catch (Exception ex)
@@ -370,8 +390,9 @@ public sealed class MainForm : Form
             AppendLog("Test de disponibilite WAPT...");
             var result = await _runtime.WaptCommandService.CheckWaptAvailabilityAsync().ConfigureAwait(true);
             AppendCommandResult(result);
-            SetActionResult($"Tester WAPT: {result.Summary}");
-            await RegisterHistoryAsync("CheckWapt", result.IsSuccess, GetSafePackageFolder(), _currentPackage?.PackageName, result.Summary, result, _currentPackage?.Version, _currentPackage?.Version).ConfigureAwait(true);
+            var actionMessage = BuildActionResultMessage("Tester WAPT", result);
+            SetCommandActionResult(actionMessage, result);
+            await RegisterHistoryAsync("CheckWapt", result.IsSuccess, GetSafePackageFolder(), _currentPackage?.PackageName, actionMessage, result, _currentPackage?.Version, _currentPackage?.Version).ConfigureAwait(true);
             await RefreshWaptStatusAsync().ConfigureAwait(true);
         }
         catch (Exception ex)
@@ -443,6 +464,57 @@ public sealed class MainForm : Form
         var entry = await _runtime.HistoryService.GetEntryByIdAsync(selected.Id).ConfigureAwait(true) ?? selected;
         using var form = new HistoryDetailsForm(entry);
         form.ShowDialog(this);
+    }
+
+    private async Task ShowManualBuildWorkflowAsync(string? preparedCommand = null, string? packageFolder = null)
+    {
+        var resolvedPackageFolder = !string.IsNullOrWhiteSpace(packageFolder)
+            ? packageFolder
+            : GetSafePackageFolder();
+        var resolvedCommand = !string.IsNullOrWhiteSpace(preparedCommand)
+            ? preparedCommand
+            : _lastPreparedManualBuildCommand;
+
+        if (string.IsNullOrWhiteSpace(resolvedPackageFolder) || !Directory.Exists(resolvedPackageFolder))
+        {
+            MessageBox.Show(this, "Selectionnez d'abord un dossier de paquet valide.", "Build manuel", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
+        }
+
+        using var form = new ManualBuildWorkflowForm(resolvedPackageFolder, resolvedCommand);
+        if (form.ShowDialog(this) != DialogResult.OK)
+        {
+            return;
+        }
+
+        if (!form.ManualBuildConfirmed)
+        {
+            return;
+        }
+
+        _lastPreparedManualBuildCommand = resolvedCommand;
+        _lastPreparedManualBuildPackageFolder = resolvedPackageFolder;
+
+        var generatedPackagePath = form.GeneratedPackagePath;
+        var confirmationMessage = string.IsNullOrWhiteSpace(generatedPackagePath)
+            ? "Build manuel confirme par l'utilisateur."
+            : $"Build manuel confirme. Paquet genere: {generatedPackagePath}";
+
+        var confirmationResult = new CommandExecutionResult
+        {
+            ExecutedCommand = resolvedCommand ?? string.Empty,
+            WorkingDirectory = resolvedPackageFolder,
+            ExitCode = 0,
+            TimedOut = false,
+            IsSkipped = true,
+            StandardOutput = string.IsNullOrWhiteSpace(generatedPackagePath) ? string.Empty : generatedPackagePath,
+            StartedAt = DateTimeOffset.Now,
+            Duration = TimeSpan.Zero
+        };
+
+        AppendLog(confirmationMessage);
+        SetActionResult("Build manuel rattache a l'historique.");
+        await RegisterHistoryAsync("BuildManualConfirmed", true, resolvedPackageFolder, _currentPackage?.PackageName, confirmationMessage, confirmationResult, _currentPackage?.Version, _currentPackage?.Version).ConfigureAwait(true);
     }
 
     private void DisplayPackageInfo(PackageInfo packageInfo)
@@ -539,10 +611,20 @@ public sealed class MainForm : Form
         {
             AppendLog("Aucune execution reelle n'a ete lancee car le mode dry-run est actif.");
         }
+        else if (result.RequiresUserInteraction)
+        {
+            AppendLog("Cette action necessite une interaction utilisateur dans un terminal externe.");
+        }
+        else if (result.IsConfigurationBlocked)
+        {
+            AppendLog("Action bloquee avant execution reelle en raison de la configuration locale.");
+        }
 
         if (!string.IsNullOrWhiteSpace(result.ExecutedCommand))
         {
-            AppendLog($"Commande: {result.ExecutedCommand}");
+            AppendLog(result.IsDryRun || result.IsConfigurationBlocked
+                ? $"Commande preparee: {result.ExecutedCommand}"
+                : $"Commande: {result.ExecutedCommand}");
         }
 
         if (!string.IsNullOrWhiteSpace(result.StandardOutput))
@@ -573,6 +655,47 @@ public sealed class MainForm : Form
     {
         _lastActionResult = value;
         _actionResultValueLabel.Text = value;
+        _actionResultValueLabel.ForeColor = SystemColors.ControlText;
+    }
+
+    private void SetCommandActionResult(string value, CommandExecutionResult result)
+    {
+        _lastActionResult = value;
+        _actionResultValueLabel.Text = value;
+        _actionResultValueLabel.ForeColor = result.IsDryRun
+            ? Color.DarkBlue
+            : result.RequiresUserInteraction
+                ? Color.SaddleBrown
+            : result.IsConfigurationBlocked
+                ? Color.DarkOrange
+                : result.IsSuccess
+                    ? Color.DarkGreen
+                    : Color.DarkRed;
+    }
+
+    private static string BuildActionResultMessage(string actionType, CommandExecutionResult result)
+    {
+        if (result.IsDryRun)
+        {
+            return $"{actionType}: succes simule en dry-run.";
+        }
+
+        if (result.RequiresUserInteraction)
+        {
+            return $"{actionType}: interaction certificat requise. Lancez la commande manuellement.";
+        }
+
+        if (result.IsConfigurationBlocked)
+        {
+            return $"{actionType}: action bloquee. {result.Summary}";
+        }
+
+        if (result.IsSuccess)
+        {
+            return $"{actionType}: succes reel.";
+        }
+
+        return $"{actionType}: echec reel. {result.Summary}";
     }
 
     private async Task ShowStartupDiagnosticsAsync()
@@ -681,6 +804,23 @@ public sealed class MainForm : Form
         }
 
         OpenFolder(packageFolder);
+    }
+
+    private void OpenPowerShellHere()
+    {
+        var packageFolder = GetSafePackageFolder();
+        if (string.IsNullOrWhiteSpace(packageFolder))
+        {
+            MessageBox.Show(this, "Selectionnez d'abord un dossier de paquet valide.", "WaptStudio", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
+        }
+
+        Process.Start(new ProcessStartInfo
+        {
+            FileName = "powershell.exe",
+            WorkingDirectory = packageFolder,
+            UseShellExecute = true
+        });
     }
 
     private static void OpenFolder(string folderPath)
