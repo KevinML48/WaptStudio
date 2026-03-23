@@ -8,6 +8,12 @@ public sealed class PackageInfo
 
     public string? PackageName { get; set; }
 
+    public string? VisibleName { get; set; }
+
+    public string? Description { get; set; }
+
+    public string? DescriptionFr { get; set; }
+
     public string? Version { get; set; }
 
     public string? SetupPyPath { get; set; }

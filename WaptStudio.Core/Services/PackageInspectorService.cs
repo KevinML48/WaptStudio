@@ -50,6 +50,9 @@ public sealed partial class PackageInspectorService : IPackageInspectorService
         {
             var controlContent = await File.ReadAllTextAsync(packageInfo.ControlFilePath, cancellationToken).ConfigureAwait(false);
             packageInfo.PackageName ??= ExtractControlValue(controlContent, "package");
+            packageInfo.VisibleName ??= ExtractControlValue(controlContent, "name");
+            packageInfo.Description ??= ExtractControlValue(controlContent, "description");
+            packageInfo.DescriptionFr ??= ExtractControlValue(controlContent, "description_fr");
             packageInfo.Version ??= ExtractControlValue(controlContent, "version");
             packageInfo.ReferencedInstallerName ??= ExtractControlValue(controlContent, "filename") ?? ExtractReferencedInstaller(controlContent);
         }

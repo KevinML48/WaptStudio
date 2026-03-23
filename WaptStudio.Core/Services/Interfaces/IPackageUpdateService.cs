@@ -6,6 +6,11 @@ namespace WaptStudio.Core.Services.Interfaces;
 
 public interface IPackageUpdateService
 {
+    Task<PackageSynchronizationPlan> PreviewReplacementAsync(
+        PackageInfo packageInfo,
+        string newInstallerFilePath,
+        CancellationToken cancellationToken = default);
+
     Task<PackageUpdateResult> ReplaceInstallerAsync(
         PackageInfo packageInfo,
         string newInstallerFilePath,

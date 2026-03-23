@@ -298,6 +298,15 @@ public sealed class MainForm : Form
                 return;
             }
 
+            var synchronizationPlan = await _runtime.PackageUpdateService.PreviewReplacementAsync(_currentPackage, dialog.FileName).ConfigureAwait(true);
+            using (var previewForm = new PackageSynchronizationPreviewForm(synchronizationPlan))
+            {
+                if (previewForm.ShowDialog(this) != DialogResult.OK)
+                {
+                    return;
+                }
+            }
+
             AppendLog($"Remplacement de l'installeur par {dialog.FileName}");
             var result = await _runtime.PackageUpdateService.ReplaceInstallerAsync(_currentPackage, dialog.FileName).ConfigureAwait(true);
             _currentPackage = result.UpdatedPackageInfo;
@@ -305,16 +314,30 @@ public sealed class MainForm : Form
             if (_currentPackage is not null)
             {
                 DisplayPackageInfo(_currentPackage);
+                _packageFolderTextBox.Text = _currentPackage.PackageFolder;
+                _settings.DefaultPackageFolder = _currentPackage.PackageFolder;
+                await _runtime.SettingsService.SaveAsync(_settings).ConfigureAwait(true);
             }
 
             AppendLog(result.Message);
+            foreach (var summaryLine in result.ChangeSummaryLines)
+            {
+                AppendLog(summaryLine);
+            }
             if (!string.IsNullOrWhiteSpace(result.BackupDirectory))
             {
                 AppendLog($"Sauvegarde creee dans {result.BackupDirectory}");
             }
 
+            if (!string.IsNullOrWhiteSpace(result.SuggestedPackageFolder))
+            {
+                AppendLog(result.PackageFolderRenamed
+                    ? $"Dossier racine renomme vers {result.SuggestedPackageFolder}"
+                    : $"Nom de dossier attendu: {result.SuggestedPackageFolder}");
+            }
+
             SetActionResult(result.Message);
-            await RegisterHistoryAsync("ReplaceInstaller", result.Success, packageFolder, _currentPackage?.PackageName, result.Message, null, previousVersion, _currentPackage?.Version).ConfigureAwait(true);
+            await RegisterHistoryAsync("ReplaceInstaller", result.Success, result.UpdatedPackageFolder ?? packageFolder, _currentPackage?.PackageName, result.Message, null, previousVersion, _currentPackage?.Version).ConfigureAwait(true);
         }
         catch (Exception ex)
         {
