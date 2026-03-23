@@ -133,14 +133,14 @@ public sealed partial class PackageInspectorService : IPackageInspectorService
     {
         var match = Regex.Match(
             content,
-            $@"(?im)^\s*{Regex.Escape(key)}\s*=\s*['\"\"](?<value>[^'\"\"]+)['\"\"]");
+            $@"(?im)^\s*{Regex.Escape(key)}\s*=\s*['""](?<value>[^'""]+)['""]");
 
         return match.Success ? match.Groups["value"].Value.Trim() : null;
     }
 
     private static string? ExtractReferencedInstaller(string content)
     {
-        var match = Regex.Match(content, @"(?im)(?<installer>[^'\""\r\n]+\.(msi|exe))");
+        var match = Regex.Match(content, @"(?im)(?<installer>[^'""\r\n]+\.(msi|exe))");
         return match.Success ? match.Groups["installer"].Value : null;
     }
 

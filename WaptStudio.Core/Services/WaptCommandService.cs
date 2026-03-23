@@ -63,11 +63,6 @@ public sealed class WaptCommandService : IWaptCommandService
         }
 
         var executablePath = settings.WaptExecutablePath;
-        if (Path.IsPathRooted(executablePath) && !File.Exists(executablePath))
-        {
-            return CreateSkippedResult(executablePath, string.Empty, workingDirectory, $"Executable WAPT introuvable: {executablePath}");
-        }
-
         if (string.IsNullOrWhiteSpace(template))
         {
             return CreateSkippedResult(executablePath, string.Empty, workingDirectory, "Aucun argument de commande WAPT n'est configure.");
@@ -104,6 +99,11 @@ public sealed class WaptCommandService : IWaptCommandService
                 StartedAt = DateTimeOffset.Now,
                 Duration = TimeSpan.Zero
             };
+        }
+
+        if (Path.IsPathRooted(executablePath) && !File.Exists(executablePath))
+        {
+            return CreateSkippedResult(executablePath, string.Empty, workingDirectory, $"Executable WAPT introuvable: {executablePath}");
         }
 
         return await _commandExecutionService.ExecuteAsync(

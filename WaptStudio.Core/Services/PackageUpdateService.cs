@@ -155,8 +155,8 @@ public sealed class PackageUpdateService : IPackageUpdateService
 
         return Regex.Replace(
             content,
-            @"(?im)^(\s*version\s*=\s*['\"\"])(?<value>[^'\"\"]+)(['\"\"])",
-            $"$1{inferredVersion}$3");
+            @"(?im)^(\s*version\s*=\s*['""])(?<value>[^'""]+)(['""])",
+            "${1}" + inferredVersion + "${3}");
     }
 
     private static string TryUpdateControlVersion(string content, string installerPath)
@@ -170,7 +170,7 @@ public sealed class PackageUpdateService : IPackageUpdateService
         return Regex.Replace(
             content,
             @"(?im)^(\s*version\s*[:=]\s*)(?<value>.+)$",
-            $"$1{inferredVersion}");
+            "${1}" + inferredVersion);
     }
 
     private static string? InferVersionFromFileName(string installerPath)
