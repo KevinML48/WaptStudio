@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Text;
 using System.Threading.Tasks;
 using System.Windows.Forms;
@@ -31,6 +32,7 @@ public sealed class MainForm : Form
     private readonly Button _signButton = new() { Text = "Signer", AutoSize = true };
     private readonly Button _uploadButton = new() { Text = "Uploader", AutoSize = true };
     private readonly Button _testWaptButton = new() { Text = "Tester WAPT", AutoSize = true };
+    private readonly Button _diagnosticEnvironmentButton = new() { Text = "Diagnostic environnement", AutoSize = true };
     private readonly Button _openPackageFolderButton = new() { Text = "Ouvrir dossier paquet", AutoSize = true };
     private readonly Button _openLogsFolderButton = new() { Text = "Ouvrir dossier logs", AutoSize = true };
     private readonly Button _saveReportButton = new() { Text = "Sauvegarder rapport", AutoSize = true };
@@ -67,6 +69,7 @@ public sealed class MainForm : Form
 
         await RefreshWaptStatusAsync().ConfigureAwait(true);
         await LoadHistoryAsync().ConfigureAwait(true);
+        await ShowStartupDiagnosticsAsync().ConfigureAwait(true);
         AppendLog("WaptStudio est pret pour un premier test local.");
     }
 
@@ -150,6 +153,7 @@ public sealed class MainForm : Form
             _signButton,
             _uploadButton,
             _testWaptButton,
+            _diagnosticEnvironmentButton,
             _openPackageFolderButton,
             _openLogsFolderButton,
             _saveReportButton,
@@ -191,6 +195,7 @@ public sealed class MainForm : Form
         _signButton.Click += async (_, _) => await ExecuteCommandAsync("Sign", runtime => runtime.WaptCommandService.SignPackageAsync(GetPackageFolder())).ConfigureAwait(true);
         _uploadButton.Click += async (_, _) => await ExecuteCommandAsync("Upload", runtime => runtime.WaptCommandService.UploadPackageAsync(GetPackageFolder())).ConfigureAwait(true);
         _testWaptButton.Click += async (_, _) => await TestWaptAsync().ConfigureAwait(true);
+        _diagnosticEnvironmentButton.Click += async (_, _) => await ShowEnvironmentDiagnosticsAsync().ConfigureAwait(true);
         _openPackageFolderButton.Click += (_, _) => OpenPackageFolder();
         _openLogsFolderButton.Click += (_, _) => OpenFolder(AppPaths.ResolveLogsDirectory(_settings));
         _saveReportButton.Click += async (_, _) => await SaveReportAsync().ConfigureAwait(true);
@@ -381,7 +386,10 @@ public sealed class MainForm : Form
         {
             _settings = await _runtime.SettingsService.LoadAsync().ConfigureAwait(true);
             var result = await _runtime.WaptCommandService.CheckWaptAvailabilityAsync().ConfigureAwait(true);
-            _waptStatusValueLabel.Text = result.IsSuccess ? "Disponible" : result.IsDryRun ? "Dry-run" : "Indisponible";
+            var pathExists = IsConfiguredWaptPathAvailable(_settings.WaptExecutablePath);
+            _waptStatusValueLabel.Text = result.IsSuccess
+                ? result.IsDryRun ? "Dry-run" : "Disponible"
+                : pathExists ? "Configure mais indisponible" : "Indisponible";
         }
         catch
         {
@@ -480,8 +488,10 @@ public sealed class MainForm : Form
         builder.AppendLine();
         builder.AppendLine("Chemins importants:");
         builder.AppendLine($"- WAPT: {_settings.WaptExecutablePath}");
+        builder.AppendLine($"- WAPT chemin existe: {(IsConfiguredWaptPathAvailable(_settings.WaptExecutablePath) ? "Oui" : "Non / PATH")}");
         builder.AppendLine($"- Logs: {AppPaths.ResolveLogsDirectory(_settings)}");
         builder.AppendLine($"- Backups: {AppPaths.ResolveBackupsDirectory(_settings)}");
+        builder.AppendLine($"- SQLite: {(File.Exists(AppPaths.HistoryDatabasePath) ? "Initialisee" : "Non initialisee")}");
         builder.AppendLine($"- Dry-run: {(_settings.DryRunEnabled ? "Oui" : "Non")}");
         _packageInfoTextBox.Text = builder.ToString();
     }
@@ -525,6 +535,11 @@ public sealed class MainForm : Form
     private void AppendCommandResult(CommandExecutionResult result)
     {
         AppendLog(result.Summary);
+        if (result.IsDryRun)
+        {
+            AppendLog("Aucune execution reelle n'a ete lancee car le mode dry-run est actif.");
+        }
+
         if (!string.IsNullOrWhiteSpace(result.ExecutedCommand))
         {
             AppendLog($"Commande: {result.ExecutedCommand}");
@@ -558,6 +573,85 @@ public sealed class MainForm : Form
     {
         _lastActionResult = value;
         _actionResultValueLabel.Text = value;
+    }
+
+    private async Task ShowStartupDiagnosticsAsync()
+    {
+        var diagnostics = await BuildEnvironmentDiagnosticsReportAsync().ConfigureAwait(true);
+        AppendLog($"Version application: {diagnostics.AppVersion}");
+        AppendLog($"Chemin WAPT configure: {diagnostics.WaptExecutablePath}");
+        AppendLog($"Chemin WAPT disponible: {(diagnostics.WaptPathExists ? "Oui" : "Non / PATH")}");
+        AppendLog($"Logs: {diagnostics.LogsDirectory}");
+        AppendLog($"Backups: {diagnostics.BackupsDirectory}");
+        AppendLog($"SQLite: {(diagnostics.SqliteAvailable ? "Initialisee" : "Non initialisee")}");
+    }
+
+    private async Task ShowEnvironmentDiagnosticsAsync()
+    {
+        var diagnostics = await BuildEnvironmentDiagnosticsReportAsync().ConfigureAwait(true);
+        using var form = new EnvironmentDiagnosticsForm(BuildEnvironmentDiagnosticsText(diagnostics));
+        form.ShowDialog(this);
+    }
+
+    private async Task<EnvironmentDiagnosticsSnapshot> BuildEnvironmentDiagnosticsReportAsync()
+    {
+        _settings = await _runtime.SettingsService.LoadAsync().ConfigureAwait(true);
+
+        var logsDirectory = AppPaths.ResolveLogsDirectory(_settings);
+        var backupsDirectory = AppPaths.ResolveBackupsDirectory(_settings);
+        var sqlitePath = AppPaths.HistoryDatabasePath;
+        var waptResult = await _runtime.WaptCommandService.CheckWaptAvailabilityAsync().ConfigureAwait(true);
+
+        return new EnvironmentDiagnosticsSnapshot(
+            AppVersion: GetApplicationVersion(),
+            WaptExecutablePath: _settings.WaptExecutablePath,
+            WaptPathExists: IsConfiguredWaptPathAvailable(_settings.WaptExecutablePath),
+            WaptStatus: _waptStatusValueLabel.Text,
+            LogsDirectory: logsDirectory,
+            LogsDirectoryAvailable: Directory.Exists(logsDirectory),
+            BackupsDirectory: backupsDirectory,
+            BackupsDirectoryAvailable: Directory.Exists(backupsDirectory),
+            SqlitePath: sqlitePath,
+            SqliteAvailable: File.Exists(sqlitePath),
+            WindowsUser: Environment.UserName,
+            WaptResultSummary: waptResult.Summary,
+            WaptCommand: waptResult.ExecutedCommand,
+            IsDryRunEnabled: _settings.DryRunEnabled);
+    }
+
+    private string BuildEnvironmentDiagnosticsText(EnvironmentDiagnosticsSnapshot diagnostics)
+    {
+        var builder = new StringBuilder();
+        builder.AppendLine("Diagnostic environnement WaptStudio");
+        builder.AppendLine();
+        builder.AppendLine($"Version application: {diagnostics.AppVersion}");
+        builder.AppendLine($"Utilisateur Windows: {diagnostics.WindowsUser}");
+        builder.AppendLine($"Chemin executable WAPT: {diagnostics.WaptExecutablePath}");
+        builder.AppendLine($"Chemin WAPT existe: {(diagnostics.WaptPathExists ? "Oui" : "Non / resolution via PATH")}");
+        builder.AppendLine($"Statut WAPT: {diagnostics.WaptStatus}");
+        builder.AppendLine($"Resultat test WAPT: {diagnostics.WaptResultSummary}");
+        builder.AppendLine($"Commande test WAPT: {diagnostics.WaptCommand}");
+        builder.AppendLine($"Dry-run actif: {(diagnostics.IsDryRunEnabled ? "Oui" : "Non")}");
+        builder.AppendLine($"Dossier logs: {diagnostics.LogsDirectory}");
+        builder.AppendLine($"Dossier logs disponible: {(diagnostics.LogsDirectoryAvailable ? "Oui" : "Non")}");
+        builder.AppendLine($"Dossier backups: {diagnostics.BackupsDirectory}");
+        builder.AppendLine($"Dossier backups disponible: {(diagnostics.BackupsDirectoryAvailable ? "Oui" : "Non")}");
+        builder.AppendLine($"SQLite: {diagnostics.SqlitePath}");
+        builder.AppendLine($"SQLite initialisee: {(diagnostics.SqliteAvailable ? "Oui" : "Non")}");
+        return builder.ToString();
+    }
+
+    private static string GetApplicationVersion()
+    {
+        var assembly = Assembly.GetEntryAssembly() ?? Assembly.GetExecutingAssembly();
+        return assembly.GetName().Version?.ToString() ?? Application.ProductVersion ?? "Version inconnue";
+    }
+
+    private static bool IsConfiguredWaptPathAvailable(string waptExecutablePath)
+    {
+        return !string.IsNullOrWhiteSpace(waptExecutablePath)
+            && Path.IsPathRooted(waptExecutablePath)
+            && File.Exists(waptExecutablePath);
     }
 
     private string GetPackageFolder()
@@ -618,4 +712,20 @@ public sealed class MainForm : Form
         box.Controls.Add(child);
         return box;
     }
+
+    private sealed record EnvironmentDiagnosticsSnapshot(
+        string AppVersion,
+        string WaptExecutablePath,
+        bool WaptPathExists,
+        string WaptStatus,
+        string LogsDirectory,
+        bool LogsDirectoryAvailable,
+        string BackupsDirectory,
+        bool BackupsDirectoryAvailable,
+        string SqlitePath,
+        bool SqliteAvailable,
+        string WindowsUser,
+        string WaptResultSummary,
+        string WaptCommand,
+        bool IsDryRunEnabled);
 }

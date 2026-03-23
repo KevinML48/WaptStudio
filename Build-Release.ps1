@@ -9,8 +9,11 @@ $publishPath = Join-Path $distRoot 'publish'
 Write-Host 'Verification de l''environnement .NET...' -ForegroundColor Cyan
 $dotnet = Get-Command dotnet -ErrorAction SilentlyContinue
 if (-not $dotnet) {
-    throw 'Le SDK .NET n''est pas installe ou n''est pas disponible dans le PATH.'
+    throw "Le SDK .NET n'est pas installe ou n'est pas disponible dans le PATH.`nInstalle .NET 10 puis verifie avec: dotnet --info"
 }
+
+$sdkVersion = & dotnet --version
+Write-Host "SDK detecte: $sdkVersion" -ForegroundColor Green
 
 if (-not (Test-Path $solutionPath)) {
     throw "Solution introuvable: $solutionPath"
@@ -43,6 +46,7 @@ try {
 }
 catch {
     Write-Host "Echec du build release: $($_.Exception.Message)" -ForegroundColor Red
+    Write-Host 'Pensez a verifier la disponibilite du SDK avec dotnet --info avant de relancer.' -ForegroundColor Yellow
     throw
 }
 

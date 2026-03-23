@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using WaptStudio.App.Bootstrap;
@@ -12,12 +13,19 @@ internal static class Program
     [STAThread]
     private static void Main()
     {
-        AppPaths.EnsureCreated();
-
         var runtime = new AppRuntime();
         ConfigureGlobalExceptionHandling(runtime);
 
-        runtime.InitializeAsync().GetAwaiter().GetResult();
+        try
+        {
+            AppPaths.EnsureCreated();
+            runtime.InitializeAsync().GetAwaiter().GetResult();
+        }
+        catch (Exception exception)
+        {
+            ShowStartupFailure(exception);
+            return;
+        }
 
         Application.SetHighDpiMode(HighDpiMode.SystemAware);
         Application.EnableVisualStyles();
@@ -56,5 +64,28 @@ internal static class Program
                 buttons: MessageBoxButtons.OK,
                 icon: MessageBoxIcon.Error);
         }
+    }
+
+    private static void ShowStartupFailure(Exception exception)
+    {
+        var message = string.Join(
+            Environment.NewLine,
+            "Le demarrage de WaptStudio a echoue.",
+            $"Base locale: {AppPaths.BaseDirectory}",
+            $"Base SQLite attendue: {AppPaths.HistoryDatabasePath}",
+            $"Erreur: {exception.Message}",
+            string.Empty,
+            "Verifiez les droits d'ecriture dans %LOCALAPPDATA% et la presence du runtime .NET/SQLite.");
+
+        try
+        {
+            Directory.CreateDirectory(AppPaths.BaseDirectory);
+            File.WriteAllText(Path.Combine(AppPaths.BaseDirectory, "startup-error.log"), $"[{DateTimeOffset.Now:O}] {exception}{Environment.NewLine}");
+        }
+        catch
+        {
+        }
+
+        MessageBox.Show(message, "Erreur de demarrage WaptStudio", MessageBoxButtons.OK, MessageBoxIcon.Error);
     }
 }

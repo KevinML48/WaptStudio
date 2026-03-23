@@ -167,7 +167,7 @@ Quand le mode dry-run est active:
 - WaptStudio construit la commande finale
 - la commande est affichee dans les logs et historisee
 - aucune execution reelle n'est lancee
-- le resultat remonte comme une simulation reussie
+- le resultat remonte explicitement comme une simulation reussie dans l'UI et l'historique
 
 Ce mode est recommande pour verifier les templates de commande avant tout test reel.
 
@@ -177,6 +177,15 @@ Ce mode est recommande pour verifier les templates de commande avant tout test r
 2. SDK .NET 10 installe et accessible via `dotnet`
 3. Outils WAPT installes localement si vous voulez tester les commandes reelles
 4. Droits d'ecriture sur le dossier du paquet et sur les repertoires locaux WaptStudio
+
+## Verification prealable .NET
+
+Avant toute compilation reelle, verifier l'environnement:
+
+```powershell
+dotnet --info
+dotnet --version
+```
 
 ## Lancement en developpement
 
@@ -191,6 +200,17 @@ Ce script:
 1. verifie la presence de `dotnet`
 2. affiche la version du SDK detecte
 3. lance `dotnet run` sur le projet WinForms
+
+## Build, test et run en ligne de commande
+
+Depuis PowerShell a la racine du depot:
+
+```powershell
+dotnet restore .\WaptStudio.sln
+dotnet build .\WaptStudio.sln -c Release
+dotnet test .\WaptStudio.sln -c Release
+dotnet run --project .\WaptStudio.App\WaptStudio.App.csproj --framework net10.0-windows
+```
 
 ## Build Release
 
@@ -231,21 +251,38 @@ Exemple prudent de templates initiaux:
 
 Ces templates doivent etre confirmes sur votre version reelle de WAPT.
 
+Au demarrage, l'application journalise aussi:
+
+- la version applicative
+- le chemin WAPT configure
+- l'etat du chemin WAPT configure
+- le chemin des logs
+- le chemin des backups
+- l'etat de la base SQLite locale
+
+Le bouton `Diagnostic environnement` affiche un rapport detaille avec ces informations.
+
 ## Premier test reel avec un paquet WAPT
 
-1. lancer WaptStudio
-2. ouvrir `Parametres`
-3. renseigner le chemin WAPT reel
-4. laisser `dry-run` active pour commencer
-5. cliquer sur `Tester WAPT`
-6. selectionner un vrai dossier de paquet WAPT
-7. cliquer sur `Analyser`
-8. verifier les chemins, la version, les installateurs detectes et l'installeur reference
-9. cliquer sur `Valider`
-10. consulter les `OK`, `WARNING` et `ERROR`
-11. si tout est coherent, tester `Construire`, `Signer` ou `Uploader` en dry-run
-12. verifier les commandes construites dans les logs et l'historique
-13. desactiver ensuite le dry-run pour un test reel controle
+1. executer `dotnet --info`
+2. compiler avec `dotnet build .\WaptStudio.sln -c Release`
+3. verifier les tests avec `dotnet test .\WaptStudio.sln -c Release`
+4. lancer l'application avec `.\Start-WaptStudio.ps1` ou `dotnet run --project .\WaptStudio.App\WaptStudio.App.csproj --framework net10.0-windows`
+5. ouvrir `Parametres`
+6. renseigner le chemin WAPT reel
+7. laisser `dry-run` active pour commencer
+8. enregistrer
+9. cliquer sur `Diagnostic environnement`
+10. verifier la version application, le chemin WAPT, l'existence du chemin WAPT, les dossiers logs/backups, SQLite et l'utilisateur Windows
+11. cliquer sur `Tester WAPT`
+12. selectionner un vrai dossier de paquet WAPT
+13. cliquer sur `Analyser`
+14. verifier les chemins, la version, les installateurs detectes et l'installeur reference
+15. cliquer sur `Valider`
+16. consulter les `OK`, `WARNING` et `ERROR`
+17. si tout est coherent, tester `Construire`, `Signer` ou `Uploader` en dry-run
+18. verifier que la commande est affichee dans les logs et historisee sans execution reelle
+19. desactiver ensuite le dry-run uniquement pour un test reel controle
 
 ## Lecture des logs
 
