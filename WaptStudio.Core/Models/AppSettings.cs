@@ -14,7 +14,7 @@ public sealed class AppSettings
 
     public string SignPackageArguments { get; set; } = "sign-package {packageFolder}";
 
-    public string UploadPackageArguments { get; set; } = "upload-package {overwriteFlag} {repositoryOption} {packageFolder}";
+    public string UploadPackageArguments { get; set; } = "upload-package {waptFilePath}";
 
     public bool DryRunEnabled { get; set; }
 

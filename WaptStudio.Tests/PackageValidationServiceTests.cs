@@ -42,13 +42,13 @@ public sealed class PackageValidationServiceTests
         public Task<CommandExecutionResult> CheckWaptAvailabilityAsync(CancellationToken cancellationToken = default)
             => Task.FromResult(CreateSkippedAvailabilityResult());
 
-        public Task<CommandExecutionResult> BuildPackageAsync(string packageFolder, CancellationToken cancellationToken = default)
+        public Task<CommandExecutionResult> BuildPackageAsync(string packageFolder, WaptExecutionContext? executionContext = null, CancellationToken cancellationToken = default)
             => Task.FromResult(CreateResult(packageFolder));
 
-        public Task<CommandExecutionResult> SignPackageAsync(string packageFolder, CancellationToken cancellationToken = default)
+        public Task<CommandExecutionResult> SignPackageAsync(string packageFolder, WaptExecutionContext? executionContext = null, CancellationToken cancellationToken = default)
             => Task.FromResult(CreateResult(packageFolder));
 
-        public Task<CommandExecutionResult> UploadPackageAsync(string packageFolder, CancellationToken cancellationToken = default)
+        public Task<CommandExecutionResult> UploadPackageAsync(string packageFolder, string? waptFilePath = null, WaptExecutionContext? executionContext = null, CancellationToken cancellationToken = default)
             => Task.FromResult(CreateResult(packageFolder));
 
         public Task<CommandExecutionResult> ValidatePackageWithWaptAsync(string packageFolder, CancellationToken cancellationToken = default)

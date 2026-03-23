@@ -10,9 +10,9 @@ public interface IWaptCommandService
 
     Task<CommandExecutionResult> ValidatePackageWithWaptAsync(string packageFolder, CancellationToken cancellationToken = default);
 
-    Task<CommandExecutionResult> BuildPackageAsync(string packageFolder, CancellationToken cancellationToken = default);
+    Task<CommandExecutionResult> BuildPackageAsync(string packageFolder, WaptExecutionContext? executionContext = null, CancellationToken cancellationToken = default);
 
-    Task<CommandExecutionResult> SignPackageAsync(string packageFolder, CancellationToken cancellationToken = default);
+    Task<CommandExecutionResult> SignPackageAsync(string packageFolder, WaptExecutionContext? executionContext = null, CancellationToken cancellationToken = default);
 
-    Task<CommandExecutionResult> UploadPackageAsync(string packageFolder, CancellationToken cancellationToken = default);
+    Task<CommandExecutionResult> UploadPackageAsync(string packageFolder, string? waptFilePath = null, WaptExecutionContext? executionContext = null, CancellationToken cancellationToken = default);
 }

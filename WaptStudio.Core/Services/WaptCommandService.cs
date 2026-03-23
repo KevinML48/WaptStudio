@@ -41,22 +41,22 @@ public sealed class WaptCommandService : IWaptCommandService
         return await ExecuteTemplateAsync(settings, WaptActionType.Validate, settings.ValidatePackageArguments, packageFolder, cancellationToken, packageFolder).ConfigureAwait(false);
     }
 
-    public async Task<CommandExecutionResult> BuildPackageAsync(string packageFolder, CancellationToken cancellationToken = default)
+    public async Task<CommandExecutionResult> BuildPackageAsync(string packageFolder, WaptExecutionContext? executionContext = null, CancellationToken cancellationToken = default)
     {
         var settings = await _settingsService.LoadAsync(cancellationToken).ConfigureAwait(false);
-        return await ExecuteTemplateAsync(settings, WaptActionType.Build, settings.BuildPackageArguments, packageFolder, cancellationToken, packageFolder).ConfigureAwait(false);
+        return await ExecuteTemplateAsync(settings, WaptActionType.Build, settings.BuildPackageArguments, packageFolder, cancellationToken, packageFolder, null, executionContext).ConfigureAwait(false);
     }
 
-    public async Task<CommandExecutionResult> SignPackageAsync(string packageFolder, CancellationToken cancellationToken = default)
+    public async Task<CommandExecutionResult> SignPackageAsync(string packageFolder, WaptExecutionContext? executionContext = null, CancellationToken cancellationToken = default)
     {
         var settings = await _settingsService.LoadAsync(cancellationToken).ConfigureAwait(false);
-        return await ExecuteTemplateAsync(settings, WaptActionType.Sign, settings.SignPackageArguments, packageFolder, cancellationToken, packageFolder).ConfigureAwait(false);
+        return await ExecuteTemplateAsync(settings, WaptActionType.Sign, settings.SignPackageArguments, packageFolder, cancellationToken, packageFolder, null, executionContext).ConfigureAwait(false);
     }
 
-    public async Task<CommandExecutionResult> UploadPackageAsync(string packageFolder, CancellationToken cancellationToken = default)
+    public async Task<CommandExecutionResult> UploadPackageAsync(string packageFolder, string? waptFilePath = null, WaptExecutionContext? executionContext = null, CancellationToken cancellationToken = default)
     {
         var settings = await _settingsService.LoadAsync(cancellationToken).ConfigureAwait(false);
-        return await ExecuteTemplateAsync(settings, WaptActionType.Upload, settings.UploadPackageArguments, packageFolder, cancellationToken, packageFolder).ConfigureAwait(false);
+        return await ExecuteTemplateAsync(settings, WaptActionType.Upload, settings.UploadPackageArguments, packageFolder, cancellationToken, packageFolder, waptFilePath, executionContext).ConfigureAwait(false);
     }
 
     private async Task<CommandExecutionResult> ExecuteTemplateAsync(
@@ -65,7 +65,9 @@ public sealed class WaptCommandService : IWaptCommandService
         string template,
         string workingDirectory,
         CancellationToken cancellationToken,
-        string? packageFolder = null)
+        string? packageFolder = null,
+        string? waptFilePath = null,
+        WaptExecutionContext? executionContext = null)
     {
         var executablePath = string.IsNullOrWhiteSpace(settings.WaptExecutablePath)
             ? CommandExecutionResult.DefaultExecutableName
@@ -77,7 +79,8 @@ public sealed class WaptCommandService : IWaptCommandService
             return CreateBlockedResult(executablePath, string.Empty, workingDirectory, "Aucun argument de commande WAPT n'est configure.");
         }
 
-        var arguments = BuildArguments(effectiveTemplate, settings, packageFolder, out var buildError);
+        var resolvedWaptFilePath = executionContext?.WaptFilePath ?? waptFilePath;
+        var arguments = BuildArguments(effectiveTemplate, settings, packageFolder, resolvedWaptFilePath, out var buildError);
         var executedCommand = BuildExecutedCommand(executablePath, arguments);
 
         if (settings.DryRunEnabled)
@@ -85,19 +88,19 @@ public sealed class WaptCommandService : IWaptCommandService
             return CreateDryRunResult(executablePath, arguments, executedCommand, workingDirectory);
         }
 
-        var preconditionFailure = ValidateRealExecutionPreconditions(actionType, settings, effectiveTemplate, packageFolder, buildError);
+        var preconditionFailure = ValidateRealExecutionPreconditions(actionType, settings, effectiveTemplate, packageFolder, resolvedWaptFilePath, executionContext, buildError);
         if (!string.IsNullOrWhiteSpace(preconditionFailure))
         {
             return CreateBlockedResult(executablePath, arguments, workingDirectory, preconditionFailure, executedCommand);
         }
 
-        if (RequiresInteractiveConsole(actionType, effectiveTemplate))
+        if (RequiresManualWorkflow(actionType, effectiveTemplate, executionContext))
         {
-            return CreateInteractiveResult(
+            return CreateManualWorkflowResult(
                 executablePath,
                 arguments,
                 workingDirectory,
-                CreateInteractiveMessage(actionType),
+                CreateManualWorkflowMessage(actionType),
                 executedCommand);
         }
 
@@ -111,20 +114,24 @@ public sealed class WaptCommandService : IWaptCommandService
             return CreateBlockedResult(executablePath, arguments, workingDirectory, $"Executable WAPT introuvable: {executablePath}", executedCommand);
         }
 
-        return await _commandExecutionService.ExecuteAsync(
+        var result = await _commandExecutionService.ExecuteAsync(
             executablePath,
             arguments,
             workingDirectory,
             settings.CommandTimeoutSeconds,
+            BuildExecutionOptions(actionType, executionContext),
             cancellationToken).ConfigureAwait(false);
+
+        return FinalizeExecutionResult(result, actionType);
     }
 
-    private static string BuildArguments(string template, AppSettings settings, string? packageFolder, out string? buildError)
+    private static string BuildArguments(string template, AppSettings settings, string? packageFolder, string? waptFilePath, out string? buildError)
     {
         buildError = null;
         var replacements = new Dictionary<string, string>
         {
             ["packageFolder"] = packageFolder is null ? string.Empty : Quote(packageFolder),
+            ["waptFilePath"] = string.IsNullOrWhiteSpace(waptFilePath) ? string.Empty : Quote(waptFilePath),
             ["signingKeyPath"] = string.IsNullOrWhiteSpace(settings.SigningKeyPath) ? string.Empty : Quote(settings.SigningKeyPath),
             ["uploadRepositoryUrl"] = string.IsNullOrWhiteSpace(settings.UploadRepositoryUrl) ? string.Empty : Quote(settings.UploadRepositoryUrl),
             ["repositoryOption"] = string.IsNullOrWhiteSpace(settings.UploadRepositoryUrl) ? string.Empty : $"--repository {Quote(settings.UploadRepositoryUrl)}",
@@ -142,6 +149,11 @@ public sealed class WaptCommandService : IWaptCommandService
             buildError = "Le dossier du paquet est requis pour cette commande WAPT.";
         }
 
+        if (template.Contains("{waptFilePath}", StringComparison.OrdinalIgnoreCase) && string.IsNullOrWhiteSpace(waptFilePath))
+        {
+            buildError = "Le fichier .wapt est requis pour cette commande WAPT.";
+        }
+
         return Regex.Replace(arguments, @"\s{2,}", " ").Trim();
     }
 
@@ -149,6 +161,16 @@ public sealed class WaptCommandService : IWaptCommandService
     {
         if (actionType != WaptActionType.Sign || string.IsNullOrWhiteSpace(template))
         {
+            if (actionType == WaptActionType.Upload && !string.IsNullOrWhiteSpace(template) && template.Contains("upload-package", StringComparison.OrdinalIgnoreCase))
+            {
+                var normalizedUploadTemplate = template
+                    .Replace("{packageFolder}", "{waptFilePath}", StringComparison.OrdinalIgnoreCase)
+                    .Replace("{repositoryOption}", string.Empty, StringComparison.OrdinalIgnoreCase)
+                    .Replace("{overwriteFlag}", string.Empty, StringComparison.OrdinalIgnoreCase);
+
+                return Regex.Replace(normalizedUploadTemplate, @"\s{2,}", " ").Trim();
+            }
+
             return template;
         }
 
@@ -168,7 +190,7 @@ public sealed class WaptCommandService : IWaptCommandService
             : Regex.Replace(normalizedTemplate, @"\s{2,}", " ").Trim();
     }
 
-    private static string? ValidateRealExecutionPreconditions(WaptActionType actionType, AppSettings settings, string template, string? packageFolder, string? buildError)
+    private static string? ValidateRealExecutionPreconditions(WaptActionType actionType, AppSettings settings, string template, string? packageFolder, string? waptFilePath, WaptExecutionContext? executionContext, string? buildError)
     {
         if (string.IsNullOrWhiteSpace(settings.WaptExecutablePath))
         {
@@ -228,6 +250,21 @@ public sealed class WaptCommandService : IWaptCommandService
             {
                 return "Parametres d'upload incomplets.";
             }
+
+            if (string.IsNullOrWhiteSpace(waptFilePath))
+            {
+                return "Fichier .wapt non renseigne pour l'upload.";
+            }
+        }
+
+        if ((actionType == WaptActionType.Build || actionType == WaptActionType.Sign) && RequiresInteractiveInput(actionType, template) && executionContext?.HasCertificatePassword != true)
+        {
+            return null;
+        }
+
+        if (actionType == WaptActionType.Upload && executionContext?.HasAdminCredentials != true)
+        {
+            return null;
         }
 
         return null;
@@ -246,17 +283,120 @@ public sealed class WaptCommandService : IWaptCommandService
         };
     }
 
-    private static bool RequiresInteractiveConsole(WaptActionType actionType, string template)
+    private static bool RequiresInteractiveInput(WaptActionType actionType, string template)
         => (actionType == WaptActionType.Build && template.Contains("build-package", StringComparison.OrdinalIgnoreCase))
-            || (actionType == WaptActionType.Sign && template.Contains("sign-package", StringComparison.OrdinalIgnoreCase));
+            || (actionType == WaptActionType.Sign && template.Contains("sign-package", StringComparison.OrdinalIgnoreCase))
+            || (actionType == WaptActionType.Upload && template.Contains("upload-package", StringComparison.OrdinalIgnoreCase));
 
-    private static string CreateInteractiveMessage(WaptActionType actionType)
+    private static bool RequiresManualWorkflow(WaptActionType actionType, string template, WaptExecutionContext? executionContext)
+    {
+        if (!RequiresInteractiveInput(actionType, template))
+        {
+            return false;
+        }
+
+        return actionType switch
+        {
+            WaptActionType.Build => executionContext?.HasCertificatePassword != true,
+            WaptActionType.Sign => executionContext?.HasCertificatePassword != true,
+            WaptActionType.Upload => executionContext?.HasAdminCredentials != true,
+            _ => false
+        };
+    }
+
+    private static string CreateManualWorkflowMessage(WaptActionType actionType)
         => actionType switch
         {
-            WaptActionType.Build => "Build reel interactif non supporte dans l'interface. Lancez la commande manuellement dans un terminal pour saisir le mot de passe du certificat.",
-            WaptActionType.Sign => "Signature reelle interactive non supportee dans l'interface. Lancez la commande manuellement dans un terminal pour saisir le mot de passe du certificat.",
+            WaptActionType.Build => "Build interactif a preparer dans un terminal externe si l'execution assistee n'est pas disponible.",
+            WaptActionType.Sign => "Signature interactive a preparer dans un terminal externe si l'execution assistee n'est pas disponible.",
+            WaptActionType.Upload => "Upload authentifie a preparer dans un terminal externe si l'execution assistee n'est pas disponible.",
             _ => "Interaction utilisateur requise pour terminer la commande."
         };
+
+    private static CommandExecutionOptions? BuildExecutionOptions(WaptActionType actionType, WaptExecutionContext? executionContext)
+    {
+        if (executionContext is null)
+        {
+            return null;
+        }
+
+        var standardInputText = actionType switch
+        {
+            WaptActionType.Build when executionContext.HasCertificatePassword => executionContext.CertificatePassword + Environment.NewLine,
+            WaptActionType.Sign when executionContext.HasCertificatePassword => executionContext.CertificatePassword + Environment.NewLine,
+            WaptActionType.Upload when executionContext.HasAdminCredentials => executionContext.AdminUser + Environment.NewLine + executionContext.AdminPassword + Environment.NewLine,
+            _ => null
+        };
+
+        if (string.IsNullOrWhiteSpace(standardInputText))
+        {
+            return null;
+        }
+
+        return new CommandExecutionOptions
+        {
+            StandardInputText = standardInputText,
+            SensitiveValuesToRedact = executionContext.GetSensitiveValues()
+        };
+    }
+
+    private static CommandExecutionResult FinalizeExecutionResult(CommandExecutionResult result, WaptActionType actionType)
+    {
+        if (!RequiresInteractiveInput(actionType, result.Arguments))
+        {
+            return result;
+        }
+
+        var interactiveResult = new CommandExecutionResult
+        {
+            FileName = result.FileName,
+            Arguments = result.Arguments,
+            ExecutedCommand = result.ExecutedCommand,
+            WorkingDirectory = result.WorkingDirectory,
+            ExitCode = result.ExitCode,
+            TimedOut = result.TimedOut,
+            IsDryRun = result.IsDryRun,
+            IsSkipped = result.IsSkipped,
+            IsConfigurationBlocked = result.IsConfigurationBlocked,
+            WasInteractiveExecutionAttempted = true,
+            ManualFallbackRecommended = !result.IsSuccess,
+            StandardOutput = result.StandardOutput,
+            StandardError = !result.IsSuccess && string.IsNullOrWhiteSpace(result.StandardError)
+                ? CreateAutomationFailureMessage(actionType)
+                : AppendFallbackRecommendation(result.StandardError, actionType, result.IsSuccess),
+            StartedAt = result.StartedAt,
+            Duration = result.Duration
+        };
+
+        return interactiveResult;
+    }
+
+    private static string CreateAutomationFailureMessage(WaptActionType actionType)
+        => actionType switch
+        {
+            WaptActionType.Build => "Le build assiste n'a pas abouti. Utilisez le workflow manuel si WAPT refuse l'automatisation non interactive.",
+            WaptActionType.Sign => "La signature assistee n'a pas abouti. Utilisez le workflow manuel si WAPT refuse l'automatisation non interactive.",
+            WaptActionType.Upload => "L'upload assiste n'a pas abouti. Utilisez le workflow manuel si WAPT refuse l'automatisation non interactive.",
+            _ => "L'execution assistee n'a pas abouti."
+        };
+
+    private static string AppendFallbackRecommendation(string error, WaptActionType actionType, bool isSuccess)
+    {
+        if (isSuccess)
+        {
+            return error;
+        }
+
+        var recommendation = CreateAutomationFailureMessage(actionType);
+        if (string.IsNullOrWhiteSpace(error))
+        {
+            return recommendation;
+        }
+
+        return error.Contains(recommendation, StringComparison.OrdinalIgnoreCase)
+            ? error
+            : error + Environment.NewLine + recommendation;
+    }
 
     private static string BuildExecutedCommand(string executablePath, string arguments) => $"{executablePath} {arguments}".Trim();
 
@@ -289,7 +429,7 @@ public sealed class WaptCommandService : IWaptCommandService
         Duration = TimeSpan.Zero
     };
 
-    private static CommandExecutionResult CreateInteractiveResult(string executablePath, string arguments, string workingDirectory, string message, string? executedCommand = null) => new()
+    private static CommandExecutionResult CreateManualWorkflowResult(string executablePath, string arguments, string workingDirectory, string message, string? executedCommand = null) => new()
     {
         FileName = string.IsNullOrWhiteSpace(executablePath) ? CommandExecutionResult.DefaultExecutableName : executablePath,
         Arguments = arguments,
@@ -298,7 +438,7 @@ public sealed class WaptCommandService : IWaptCommandService
         ExitCode = 0,
         TimedOut = false,
         IsSkipped = true,
-        RequiresUserInteraction = true,
+        RequiresExternalManualWorkflow = true,
         StandardError = message,
         StartedAt = DateTimeOffset.Now,
         Duration = TimeSpan.Zero

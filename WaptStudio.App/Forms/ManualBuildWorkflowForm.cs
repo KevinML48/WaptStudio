@@ -10,7 +10,7 @@ public sealed class ManualBuildWorkflowForm : Form
     private readonly TextBox _commandTextBox;
     private readonly TextBox _generatedPackageTextBox;
 
-    public ManualBuildWorkflowForm(string workflowName, string packageFolder, string? preparedCommand, string artifactLabel)
+    public ManualBuildWorkflowForm(string workflowName, string packageFolder, string? preparedCommand, string instructionsText, string artifactLabel, string selectArtifactButtonText)
     {
         _packageFolder = packageFolder;
         GeneratedPackagePath = string.Empty;
@@ -27,7 +27,7 @@ public sealed class ManualBuildWorkflowForm : Form
             Dock = DockStyle.Top,
             AutoSize = true,
             MaximumSize = new System.Drawing.Size(920, 0),
-            Text = "Cette action WAPT demande une interaction certificat. Copiez la commande ci-dessous, lancez-la dans un terminal, saisissez le mot de passe du certificat, puis revenez dans WaptStudio pour rattacher le resultat manuel a l'historique."
+            Text = instructionsText
         };
 
         _commandTextBox = new TextBox
@@ -60,7 +60,7 @@ public sealed class ManualBuildWorkflowForm : Form
         var openPowerShellButton = new Button { Text = "Ouvrir PowerShell ici", AutoSize = true };
         openPowerShellButton.Click += (_, _) => OpenPowerShellHere();
 
-        var selectPackageButton = new Button { Text = "Selectionner le .wapt genere", AutoSize = true };
+        var selectPackageButton = new Button { Text = selectArtifactButtonText, AutoSize = true };
         selectPackageButton.Click += (_, _) => SelectGeneratedPackage();
 
         var confirmButton = new Button { Text = "Marquer comme operation manuelle reussie", AutoSize = true };
@@ -141,7 +141,7 @@ public sealed class ManualBuildWorkflowForm : Form
         using var dialog = new OpenFileDialog
         {
             Filter = "Paquets WAPT (*.wapt)|*.wapt|Tous les fichiers (*.*)|*.*",
-            Title = "Selectionner le paquet .wapt genere",
+            Title = "Selectionner le fichier .wapt associe",
             InitialDirectory = Directory.Exists(_packageFolder) ? _packageFolder : Environment.GetFolderPath(Environment.SpecialFolder.Desktop)
         };
 

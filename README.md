@@ -171,11 +171,34 @@ Quand le mode dry-run est active:
 
 Ce mode est recommande pour verifier les templates de commande avant tout test reel.
 
-Limite V1 importante:
+## Workflows interactifs assistes
 
-- un `build-package` reel qui demande un mot de passe de certificat interactif n'est pas pilote directement dans l'UI
-- un `sign-package` reel qui demande un mot de passe de certificat interactif n'est pas pilote directement dans l'UI
-- dans ce cas, WaptStudio ouvre une fenetre dediee avec la commande preparee, un bouton de copie, un bouton `Ouvrir PowerShell ici` et un rattachement simple du resultat manuel a l'historique
+En mode reel, WaptStudio peut maintenant ouvrir un dialogue de secrets temporaires juste avant l'action:
+
+- `Build`: mot de passe certificat
+- `Sign`: mot de passe certificat
+- `Upload`: `Admin User` + `Password`
+- `Build + Upload`: mot de passe certificat + identifiants admin dans un seul dialogue
+
+Bonnes pratiques appliquees:
+
+- aucun secret n'est enregistre dans `AppSettings`
+- aucun secret n'est ecrit dans SQLite, les logs, le rapport exporte ou l'historique
+- les secrets restent uniquement en memoire pendant l'action courante
+- les commandes affichees dans l'UI et l'historique ne contiennent jamais les secrets
+
+Limite technique assumee:
+
+- WaptStudio tente une execution assistee via `stdin` quand cela est raisonnable
+- si `wapt-get` refuse l'automatisation non interactive ou echoue de facon non fiable, WaptStudio bascule vers un workflow manuel assiste
+- ce fallback manuel reste disponible pour `Build`, `Sign` et `Upload`
+
+Workflow manuel assiste:
+
+- affichage de la commande preparee sans secret
+- bouton de copie de commande
+- bouton `Ouvrir PowerShell ici`
+- confirmation manuelle ensuite dans l'historique
 
 ## Prerequis
 
@@ -253,11 +276,13 @@ Exemple prudent de templates initiaux:
 - validation: `show {packageFolder}`
 - build: `build-package {packageFolder}`
 - sign: `sign-package {packageFolder}`
-- upload: `upload-package {repositoryOption} {overwriteFlag} {packageFolder}`
+- upload: `upload-package {waptFilePath}`
 
 Ces templates doivent etre confirmes sur votre version reelle de WAPT.
 
 Pour la signature locale, WaptStudio attend un fichier `.p12` ou `.pem`. Un fichier `.crt` seul est refuse car il ne suffit pas pour le workflow de signature interactive pris en charge par cette V1.
+
+Pour l'upload, WaptStudio n'exige plus de repository si la commande standard `upload-package {waptFilePath}` suffit dans votre environnement WAPT.
 
 Au demarrage, l'application journalise aussi:
 
@@ -288,19 +313,22 @@ Le bouton `Diagnostic environnement` affiche un rapport detaille avec ces inform
 14. verifier les chemins, la version, les installateurs detectes et l'installeur reference
 15. cliquer sur `Valider`
 16. consulter les `OK`, `WARNING` et `ERROR`
-17. si tout est coherent, tester `Construire`, `Signer` ou `Uploader` en dry-run
-18. verifier que la commande est affichee dans les logs et historisee sans execution reelle
+17. si tout est coherent, tester `Construire`, `Signer`, `Uploader` ou `Build + Upload` en dry-run
+18. verifier que les commandes sont affichees dans les logs et historisees sans execution reelle
 19. desactiver ensuite le dry-run uniquement pour un test reel controle
-20. si `Construire` indique qu'une interaction certificat est requise, utiliser la fenetre `Workflow build manuel WAPT`
-21. cliquer sur `Copier la commande` si besoin
-22. cliquer sur `Ouvrir PowerShell ici`
-23. lancer la commande dans le terminal ouvert
-24. saisir le mot de passe du certificat quand WAPT le demande
-25. verifier que le paquet `.wapt` est genere
-26. revenir dans WaptStudio
-27. selectionner le `.wapt` genere dans la fenetre si vous voulez tracer le chemin exact
-28. cliquer sur `Marquer comme build manuel reussi`
-29. verifier dans l'historique la distinction entre `BuildManualPrepared` et `BuildManualConfirmed`
+20. pour `Construire` ou `Signer`, saisir le mot de passe certificat dans le dialogue temporaire quand WaptStudio le demande
+21. pour `Uploader`, saisir `Admin User` et `Password` dans le dialogue temporaire quand WaptStudio le demande
+22. si l'execution assistee reussit, verifier l'entree `BuildInteractiveExecuted`, `SignInteractiveExecuted` ou `UploadInteractiveExecuted`
+23. si l'execution assistee n'est pas fiable, utiliser la fenetre de workflow manuel proposee par WaptStudio
+24. cliquer sur `Copier la commande` si besoin
+25. cliquer sur `Ouvrir PowerShell ici`
+26. lancer la commande dans le terminal ouvert
+27. saisir les secrets uniquement quand WAPT les demande dans le terminal
+28. verifier que le paquet `.wapt` est genere ou uploadé selon l'action
+29. revenir dans WaptStudio
+30. selectionner le `.wapt` associe si vous voulez tracer le chemin exact
+31. cliquer sur `Marquer comme operation manuelle reussie`
+32. verifier dans l'historique les distinctions `BuildDryRun`, `BuildManualPrepared`, `BuildManualConfirmed`, `BuildInteractiveExecuted`, `SignDryRun`, `SignManualPrepared`, `SignManualConfirmed`, `SignInteractiveExecuted`, `UploadDryRun`, `UploadInteractiveExecuted`, `UploadManualPrepared`, `UploadManualConfirmed`
 
 ## Lecture des logs
 

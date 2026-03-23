@@ -5,6 +5,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using WaptStudio.Core.Models;
 using WaptStudio.Core.Services.Interfaces;
+using WaptStudio.Core.Utilities;
 
 namespace WaptStudio.Core.Services;
 
@@ -15,6 +16,7 @@ public sealed class CommandExecutionService : ICommandExecutionService
         string arguments,
         string workingDirectory,
         int timeoutSeconds,
+        CommandExecutionOptions? options = null,
         CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(fileName))
@@ -30,6 +32,7 @@ public sealed class CommandExecutionService : ICommandExecutionService
             UseShellExecute = false,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
+            RedirectStandardInput = !string.IsNullOrWhiteSpace(options?.StandardInputText),
             CreateNoWindow = true,
             StandardOutputEncoding = Encoding.UTF8,
             StandardErrorEncoding = Encoding.UTF8
@@ -64,6 +67,13 @@ public sealed class CommandExecutionService : ICommandExecutionService
                 throw new InvalidOperationException("Le processus n'a pas pu demarrer.");
             }
 
+            if (!string.IsNullOrWhiteSpace(options?.StandardInputText))
+            {
+                await process.StandardInput.WriteAsync(options.StandardInputText).ConfigureAwait(false);
+                await process.StandardInput.FlushAsync().ConfigureAwait(false);
+                process.StandardInput.Close();
+            }
+
             process.BeginOutputReadLine();
             process.BeginErrorReadLine();
 
@@ -79,7 +89,7 @@ public sealed class CommandExecutionService : ICommandExecutionService
                 TryTerminateProcess(process);
 
                 stopwatch.Stop();
-                return new CommandExecutionResult
+                return SensitiveDataSanitizer.SanitizeCommandResult(new CommandExecutionResult
                 {
                     FileName = fileName,
                     Arguments = arguments,
@@ -91,13 +101,13 @@ public sealed class CommandExecutionService : ICommandExecutionService
                     StandardError = standardError.ToString().Trim(),
                     StartedAt = startedAt,
                     Duration = stopwatch.Elapsed
-                };
+                }, options?.SensitiveValuesToRedact);
             }
 
             await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
             stopwatch.Stop();
 
-            return new CommandExecutionResult
+            return SensitiveDataSanitizer.SanitizeCommandResult(new CommandExecutionResult
             {
                 FileName = fileName,
                 Arguments = arguments,
@@ -109,13 +119,13 @@ public sealed class CommandExecutionService : ICommandExecutionService
                 StandardError = standardError.ToString().Trim(),
                 StartedAt = startedAt,
                 Duration = stopwatch.Elapsed
-            };
+            }, options?.SensitiveValuesToRedact);
         }
         catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception)
         {
             stopwatch.Stop();
 
-            return new CommandExecutionResult
+            return SensitiveDataSanitizer.SanitizeCommandResult(new CommandExecutionResult
             {
                 FileName = fileName,
                 Arguments = arguments,
@@ -127,7 +137,7 @@ public sealed class CommandExecutionService : ICommandExecutionService
                 StandardError = string.IsNullOrWhiteSpace(standardError.ToString()) ? ex.Message : standardError.ToString().Trim(),
                 StartedAt = startedAt,
                 Duration = stopwatch.Elapsed
-            };
+            }, options?.SensitiveValuesToRedact);
         }
     }
 

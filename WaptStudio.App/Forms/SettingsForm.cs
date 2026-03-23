@@ -76,7 +76,7 @@ public sealed class SettingsForm : Form
         {
             AutoSize = true,
             Dock = DockStyle.Fill,
-            Text = "Placeholders disponibles dans les arguments: {packageFolder}, {signingKeyPath}, {uploadRepositoryUrl}, {repositoryOption}, {overwriteFlag}"
+            Text = "Placeholders disponibles dans les arguments: {packageFolder}, {waptFilePath}, {signingKeyPath}, {uploadRepositoryUrl}, {repositoryOption}, {overwriteFlag}"
         };
         root.Controls.Add(helpLabel, 0, row);
         root.SetColumnSpan(helpLabel, 3);

@@ -24,7 +24,15 @@ public sealed class CommandExecutionResult
 
     public bool IsConfigurationBlocked { get; init; }
 
-    public bool RequiresUserInteraction { get; init; }
+    public bool RequiresCredentialPrompt { get; init; }
+
+    public bool RequiresExternalManualWorkflow { get; init; }
+
+    public bool WasInteractiveExecutionAttempted { get; init; }
+
+    public bool ManualFallbackRecommended { get; init; }
+
+    public bool RequiresUserInteraction => RequiresCredentialPrompt || RequiresExternalManualWorkflow;
 
     public string StandardOutput { get; init; } = string.Empty;
 
@@ -40,7 +48,9 @@ public sealed class CommandExecutionResult
         ? "Succes simule en dry-run."
         : IsConfigurationBlocked
             ? (string.IsNullOrWhiteSpace(StandardError) ? "Action bloquee par la configuration." : StandardError)
-            : RequiresUserInteraction
+            : RequiresCredentialPrompt
+                ? (string.IsNullOrWhiteSpace(StandardError) ? "Informations sensibles requises pour continuer." : StandardError)
+            : RequiresExternalManualWorkflow
                 ? (string.IsNullOrWhiteSpace(StandardError) ? "Interaction utilisateur requise pour terminer la commande." : StandardError)
             : IsSuccess
                 ? IsSkipped

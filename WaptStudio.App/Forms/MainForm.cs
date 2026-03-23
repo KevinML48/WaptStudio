@@ -11,6 +11,7 @@ using System.Windows.Forms;
 using WaptStudio.App.Bootstrap;
 using WaptStudio.Core.Configuration;
 using WaptStudio.Core.Models;
+using WaptStudio.Core.Utilities;
 
 namespace WaptStudio.App.Forms;
 
@@ -30,6 +31,7 @@ public sealed class MainForm : Form
     private readonly Button _replaceButton = new() { Text = "Remplacer MSI", AutoSize = true };
     private readonly Button _validateButton = new() { Text = "Valider", AutoSize = true };
     private readonly Button _buildButton = new() { Text = "Construire", AutoSize = true };
+    private readonly Button _buildAndUploadButton = new() { Text = "Build + Upload", AutoSize = true };
     private readonly Button _signButton = new() { Text = "Signer", AutoSize = true };
     private readonly Button _uploadButton = new() { Text = "Uploader", AutoSize = true };
     private readonly Button _testWaptButton = new() { Text = "Tester WAPT", AutoSize = true };
@@ -49,6 +51,7 @@ public sealed class MainForm : Form
     private string? _lastPreparedManualActionType;
     private string? _lastPreparedManualCommand;
     private string? _lastPreparedManualPackageFolder;
+    private string? _lastKnownWaptFilePath;
 
     public MainForm(AppRuntime runtime)
     {
@@ -156,6 +159,7 @@ public sealed class MainForm : Form
             _replaceButton,
             _validateButton,
             _buildButton,
+            _buildAndUploadButton,
             _signButton,
             _uploadButton,
             _testWaptButton,
@@ -199,9 +203,10 @@ public sealed class MainForm : Form
         _analyzeButton.Click += async (_, _) => await AnalyzePackageAsync().ConfigureAwait(true);
         _replaceButton.Click += async (_, _) => await ReplaceInstallerAsync().ConfigureAwait(true);
         _validateButton.Click += async (_, _) => await ValidatePackageAsync().ConfigureAwait(true);
-        _buildButton.Click += async (_, _) => await ExecuteCommandAsync("Build", runtime => runtime.WaptCommandService.BuildPackageAsync(GetPackageFolder())).ConfigureAwait(true);
-        _signButton.Click += async (_, _) => await ExecuteCommandAsync("Sign", runtime => runtime.WaptCommandService.SignPackageAsync(GetPackageFolder())).ConfigureAwait(true);
-        _uploadButton.Click += async (_, _) => await ExecuteCommandAsync("Upload", runtime => runtime.WaptCommandService.UploadPackageAsync(GetPackageFolder())).ConfigureAwait(true);
+        _buildButton.Click += async (_, _) => await ExecuteBuildAsync().ConfigureAwait(true);
+        _buildAndUploadButton.Click += async (_, _) => await ExecuteBuildAndUploadAsync().ConfigureAwait(true);
+        _signButton.Click += async (_, _) => await ExecuteSignAsync().ConfigureAwait(true);
+        _uploadButton.Click += async (_, _) => await ExecuteUploadAsync().ConfigureAwait(true);
         _testWaptButton.Click += async (_, _) => await TestWaptAsync().ConfigureAwait(true);
         _diagnosticEnvironmentButton.Click += async (_, _) => await ShowEnvironmentDiagnosticsAsync().ConfigureAwait(true);
         _openPackageFolderButton.Click += (_, _) => OpenPackageFolder();
@@ -376,36 +381,264 @@ public sealed class MainForm : Form
         }
     }
 
-    private async Task ExecuteCommandAsync(string actionType, Func<AppRuntime, Task<CommandExecutionResult>> action)
+    private async Task<bool> ExecuteBuildAsync(WaptExecutionContext? providedContext = null)
     {
         try
         {
             var packageFolder = GetPackageFolder();
             _currentPackage ??= await _runtime.PackageInspectorService.AnalyzePackageAsync(packageFolder).ConfigureAwait(true);
-            AppendLog($"Execution {actionType} sur {packageFolder}");
+            AppendLog($"Execution Build sur {packageFolder}");
 
-            var result = await action(_runtime).ConfigureAwait(true);
-            AppendCommandResult(result);
-            var actionMessage = BuildActionResultMessage(actionType, result);
-            SetCommandActionResult(actionMessage, result);
+            var ownsContext = providedContext is null;
+            var executionContext = providedContext;
 
-            var historyActionType = actionType;
-            if (result.RequiresUserInteraction && SupportsManualWorkflow(actionType))
+            try
             {
-                historyActionType = $"{actionType}ManualPrepared";
-                _lastPreparedManualActionType = actionType;
-                _lastPreparedManualCommand = result.ExecutedCommand;
-                _lastPreparedManualPackageFolder = packageFolder;
-                await ShowManualWorkflowAsync(actionType, result.ExecutedCommand, packageFolder).ConfigureAwait(true);
-            }
+                if (!_settings.DryRunEnabled && executionContext is null)
+                {
+                    executionContext = PromptForCredentials(
+                        "Build WAPT assiste",
+                        "Saisissez le mot de passe du certificat pour tenter le build assiste dans WaptStudio. Si WAPT refuse l'automatisation non interactive, un fallback manuel sera propose.",
+                        requireCertificatePassword: true,
+                        requireAdminCredentials: false);
 
-            await RegisterHistoryAsync(historyActionType, result.IsSuccess, packageFolder, _currentPackage?.PackageName, actionMessage, result, _currentPackage?.Version, _currentPackage?.Version).ConfigureAwait(true);
-            await RefreshWaptStatusAsync().ConfigureAwait(true);
+                    if (executionContext is null)
+                    {
+                        return false;
+                    }
+                }
+
+                var result = await _runtime.WaptCommandService.BuildPackageAsync(packageFolder, executionContext).ConfigureAwait(true);
+                var outcome = await HandleActionResultAsync("Build", packageFolder, result, executionContext?.GetSensitiveValues()).ConfigureAwait(true);
+                _lastKnownWaptFilePath = outcome.ArtifactPath ?? ResolveExpectedWaptFilePath(packageFolder, allowExpectedPathWhenMissing: result.IsDryRun);
+                return outcome.Completed;
+            }
+            finally
+            {
+                if (ownsContext)
+                {
+                    executionContext?.Clear();
+                }
+            }
         }
         catch (Exception ex)
         {
-            await HandleUiOperationErrorAsync($"Operation {actionType} impossible.", ex).ConfigureAwait(true);
+            await HandleUiOperationErrorAsync("Operation Build impossible.", ex).ConfigureAwait(true);
+            return false;
         }
+    }
+
+    private async Task<bool> ExecuteSignAsync(WaptExecutionContext? providedContext = null)
+    {
+        try
+        {
+            var packageFolder = GetPackageFolder();
+            _currentPackage ??= await _runtime.PackageInspectorService.AnalyzePackageAsync(packageFolder).ConfigureAwait(true);
+            AppendLog($"Execution Sign sur {packageFolder}");
+
+            var ownsContext = providedContext is null;
+            var executionContext = providedContext;
+
+            try
+            {
+                if (!_settings.DryRunEnabled && executionContext is null)
+                {
+                    executionContext = PromptForCredentials(
+                        "Signature WAPT assistee",
+                        "Saisissez le mot de passe du certificat pour tenter la signature assistee dans WaptStudio. Si WAPT refuse l'automatisation non interactive, un fallback manuel sera propose.",
+                        requireCertificatePassword: true,
+                        requireAdminCredentials: false);
+
+                    if (executionContext is null)
+                    {
+                        return false;
+                    }
+                }
+
+                var result = await _runtime.WaptCommandService.SignPackageAsync(packageFolder, executionContext).ConfigureAwait(true);
+                var outcome = await HandleActionResultAsync("Sign", packageFolder, result, executionContext?.GetSensitiveValues()).ConfigureAwait(true);
+                return outcome.Completed;
+            }
+            finally
+            {
+                if (ownsContext)
+                {
+                    executionContext?.Clear();
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            await HandleUiOperationErrorAsync("Operation Sign impossible.", ex).ConfigureAwait(true);
+            return false;
+        }
+    }
+
+    private async Task<bool> ExecuteUploadAsync(string? explicitWaptFilePath = null, WaptExecutionContext? providedContext = null)
+    {
+        try
+        {
+            var packageFolder = GetPackageFolder();
+            _currentPackage ??= await _runtime.PackageInspectorService.AnalyzePackageAsync(packageFolder).ConfigureAwait(true);
+            var waptFilePath = ResolveUploadWaptFilePath(packageFolder, explicitWaptFilePath, allowExpectedPathWhenMissing: _settings.DryRunEnabled);
+
+            if (string.IsNullOrWhiteSpace(waptFilePath))
+            {
+                MessageBox.Show(this, "Aucun fichier .wapt n'a pu etre determine pour l'upload.", "Upload WAPT", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return false;
+            }
+
+            AppendLog($"Execution Upload sur {waptFilePath}");
+
+            var ownsContext = providedContext is null;
+            var executionContext = providedContext;
+
+            try
+            {
+                if (!_settings.DryRunEnabled && executionContext is null)
+                {
+                    executionContext = PromptForCredentials(
+                        "Upload WAPT authentifie",
+                        "Saisissez l'identifiant administrateur WAPT et son mot de passe pour tenter l'upload assiste dans WaptStudio. Si WAPT refuse l'automatisation non interactive, un fallback manuel sera propose.",
+                        requireCertificatePassword: false,
+                        requireAdminCredentials: true);
+
+                    if (executionContext is null)
+                    {
+                        return false;
+                    }
+                }
+
+                if (executionContext is not null)
+                {
+                    executionContext.WaptFilePath = waptFilePath;
+                }
+
+                var result = await _runtime.WaptCommandService.UploadPackageAsync(packageFolder, waptFilePath, executionContext).ConfigureAwait(true);
+                var outcome = await HandleActionResultAsync("Upload", packageFolder, result, executionContext?.GetSensitiveValues()).ConfigureAwait(true);
+                return outcome.Completed;
+            }
+            finally
+            {
+                if (ownsContext)
+                {
+                    executionContext?.Clear();
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            await HandleUiOperationErrorAsync("Operation Upload impossible.", ex).ConfigureAwait(true);
+            return false;
+        }
+    }
+
+    private async Task ExecuteBuildAndUploadAsync()
+    {
+        try
+        {
+            var packageFolder = GetPackageFolder();
+            _currentPackage ??= await _runtime.PackageInspectorService.AnalyzePackageAsync(packageFolder).ConfigureAwait(true);
+
+            WaptExecutionContext? executionContext = null;
+
+            try
+            {
+                if (!_settings.DryRunEnabled)
+                {
+                    executionContext = PromptForCredentials(
+                        "Workflow Build + Upload",
+                        "Saisissez les informations necessaires pour tenter un build assiste puis un upload authentifie dans WaptStudio. Si WAPT refuse l'automatisation non interactive, un fallback manuel sera propose pour chaque etape.",
+                        requireCertificatePassword: true,
+                        requireAdminCredentials: true);
+
+                    if (executionContext is null)
+                    {
+                        return;
+                    }
+                }
+
+                var buildCompleted = await ExecuteBuildAsync(executionContext).ConfigureAwait(true);
+                if (!buildCompleted)
+                {
+                    return;
+                }
+
+                var uploadTarget = ResolveUploadWaptFilePath(packageFolder, _lastKnownWaptFilePath, allowExpectedPathWhenMissing: _settings.DryRunEnabled);
+                if (string.IsNullOrWhiteSpace(uploadTarget))
+                {
+                    MessageBox.Show(this, "Build termine mais aucun fichier .wapt n'a pu etre determine pour l'upload.", "Build + Upload", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    return;
+                }
+
+                AppendLog($"Enchainement vers Upload sur {uploadTarget}");
+                await ExecuteUploadAsync(uploadTarget, executionContext).ConfigureAwait(true);
+            }
+            finally
+            {
+                executionContext?.Clear();
+            }
+        }
+        catch (Exception ex)
+        {
+            await HandleUiOperationErrorAsync("Workflow Build + Upload impossible.", ex).ConfigureAwait(true);
+        }
+    }
+
+    private async Task<ActionHandlingOutcome> HandleActionResultAsync(string actionType, string packageFolder, CommandExecutionResult result, IReadOnlyList<string>? sensitiveValues)
+    {
+        var sanitizedResult = SensitiveDataSanitizer.SanitizeCommandResult(result, sensitiveValues);
+        AppendCommandResult(sanitizedResult);
+
+        var actionMessage = SensitiveDataSanitizer.SanitizeText(BuildActionResultMessage(actionType, sanitizedResult), sensitiveValues);
+        SetCommandActionResult(actionMessage, sanitizedResult);
+
+        if (sanitizedResult.RequiresExternalManualWorkflow)
+        {
+            return await PrepareAndRunManualWorkflowAsync(actionType, packageFolder, sanitizedResult, actionMessage).ConfigureAwait(true);
+        }
+
+        var historyActionType = BuildHistoryActionType(actionType, sanitizedResult);
+        await RegisterHistoryAsync(historyActionType, sanitizedResult.IsSuccess, packageFolder, _currentPackage?.PackageName, actionMessage, sanitizedResult, _currentPackage?.Version, _currentPackage?.Version).ConfigureAwait(true);
+        await RefreshWaptStatusAsync().ConfigureAwait(true);
+
+        if (sanitizedResult.ManualFallbackRecommended && SupportsManualWorkflow(actionType))
+        {
+            return await PrepareAndRunManualWorkflowAsync(actionType, packageFolder, sanitizedResult, actionMessage).ConfigureAwait(true);
+        }
+
+        return new ActionHandlingOutcome(sanitizedResult.IsSuccess || sanitizedResult.IsDryRun, null);
+    }
+
+    private async Task<ActionHandlingOutcome> PrepareAndRunManualWorkflowAsync(string actionType, string packageFolder, CommandExecutionResult result, string actionMessage)
+    {
+        _lastPreparedManualActionType = actionType;
+        _lastPreparedManualCommand = result.ExecutedCommand;
+        _lastPreparedManualPackageFolder = packageFolder;
+
+        var preparedMessage = result.ManualFallbackRecommended
+            ? $"{GetManualHistoryLabel(actionType)}: execution assistee non fiable ou echouee, fallback manuel prepare."
+            : $"{GetManualHistoryLabel(actionType)} manuel prepare. {actionMessage}";
+
+        var preparedResult = new CommandExecutionResult
+        {
+            FileName = result.FileName,
+            Arguments = result.Arguments,
+            ExecutedCommand = result.ExecutedCommand,
+            WorkingDirectory = packageFolder,
+            ExitCode = result.ExitCode,
+            TimedOut = result.TimedOut,
+            IsSkipped = true,
+            RequiresExternalManualWorkflow = true,
+            StandardError = preparedMessage,
+            StartedAt = DateTimeOffset.Now,
+            Duration = result.Duration
+        };
+
+        await RegisterHistoryAsync($"{actionType}ManualPrepared", false, packageFolder, _currentPackage?.PackageName, preparedMessage, preparedResult, _currentPackage?.Version, _currentPackage?.Version).ConfigureAwait(true);
+        var manualOutcome = await ShowManualWorkflowAsync(actionType, result.ExecutedCommand, packageFolder).ConfigureAwait(true);
+        await RefreshWaptStatusAsync().ConfigureAwait(true);
+        return new ActionHandlingOutcome(manualOutcome.Confirmed, manualOutcome.ArtifactPath);
     }
 
     private async Task TestWaptAsync()
@@ -491,7 +724,7 @@ public sealed class MainForm : Form
         form.ShowDialog(this);
     }
 
-    private async Task ShowManualWorkflowAsync(string? actionType = null, string? preparedCommand = null, string? packageFolder = null)
+    private async Task<ManualWorkflowOutcome> ShowManualWorkflowAsync(string? actionType = null, string? preparedCommand = null, string? packageFolder = null)
     {
         var resolvedActionType = !string.IsNullOrWhiteSpace(actionType)
             ? actionType
@@ -506,24 +739,30 @@ public sealed class MainForm : Form
         if (string.IsNullOrWhiteSpace(resolvedActionType) || !SupportsManualWorkflow(resolvedActionType))
         {
             MessageBox.Show(this, "Aucune action manuelle preparee n'est disponible.", "Workflow manuel", MessageBoxButtons.OK, MessageBoxIcon.Information);
-            return;
+            return new ManualWorkflowOutcome(false, null);
         }
 
         if (string.IsNullOrWhiteSpace(resolvedPackageFolder) || !Directory.Exists(resolvedPackageFolder))
         {
             MessageBox.Show(this, "Selectionnez d'abord un dossier de paquet valide.", "Workflow manuel", MessageBoxButtons.OK, MessageBoxIcon.Information);
-            return;
+            return new ManualWorkflowOutcome(false, null);
         }
 
-        using var form = new ManualBuildWorkflowForm(GetManualWorkflowName(resolvedActionType), resolvedPackageFolder, resolvedCommand, GetManualArtifactLabel(resolvedActionType));
+        using var form = new ManualBuildWorkflowForm(
+            GetManualWorkflowName(resolvedActionType),
+            resolvedPackageFolder,
+            resolvedCommand,
+            GetManualInstructionText(resolvedActionType),
+            GetManualArtifactLabel(resolvedActionType),
+            GetManualSelectArtifactButtonText(resolvedActionType));
         if (form.ShowDialog(this) != DialogResult.OK)
         {
-            return;
+            return new ManualWorkflowOutcome(false, null);
         }
 
         if (!form.ManualActionConfirmed)
         {
-            return;
+            return new ManualWorkflowOutcome(false, null);
         }
 
         _lastPreparedManualActionType = resolvedActionType;
@@ -550,26 +789,59 @@ public sealed class MainForm : Form
         AppendLog(confirmationMessage);
         SetActionResult($"{GetManualHistoryLabel(resolvedActionType)} manuel rattache a l'historique.");
         await RegisterHistoryAsync($"{resolvedActionType}ManualConfirmed", true, resolvedPackageFolder, _currentPackage?.PackageName, confirmationMessage, confirmationResult, _currentPackage?.Version, _currentPackage?.Version).ConfigureAwait(true);
+        return new ManualWorkflowOutcome(true, generatedPackagePath);
     }
 
     private static bool SupportsManualWorkflow(string actionType)
         => string.Equals(actionType, "Build", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(actionType, "Sign", StringComparison.OrdinalIgnoreCase);
+            || string.Equals(actionType, "Sign", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(actionType, "Upload", StringComparison.OrdinalIgnoreCase);
 
     private static string GetManualWorkflowName(string actionType)
         => string.Equals(actionType, "Sign", StringComparison.OrdinalIgnoreCase)
             ? "signature"
+            : string.Equals(actionType, "Upload", StringComparison.OrdinalIgnoreCase)
+                ? "upload"
             : "build";
 
     private static string GetManualHistoryLabel(string actionType)
         => string.Equals(actionType, "Sign", StringComparison.OrdinalIgnoreCase)
             ? "Signature"
+            : string.Equals(actionType, "Upload", StringComparison.OrdinalIgnoreCase)
+                ? "Upload"
             : "Build";
 
     private static string GetManualArtifactLabel(string actionType)
         => string.Equals(actionType, "Sign", StringComparison.OrdinalIgnoreCase)
             ? "Chemin du .wapt signe (optionnel si vous voulez tracer l'artifact final)"
+            : string.Equals(actionType, "Upload", StringComparison.OrdinalIgnoreCase)
+                ? "Chemin du .wapt uploade (optionnel si vous voulez tracer l'artifact)"
             : "Chemin du .wapt genere (optionnel mais recommande)";
+
+    private static string GetManualInstructionText(string actionType)
+        => string.Equals(actionType, "Upload", StringComparison.OrdinalIgnoreCase)
+            ? "Cette action WAPT peut demander l'authentification administrateur du serveur. Copiez la commande ci-dessous, lancez-la dans un terminal, saisissez les identifiants uniquement quand WAPT les demande, puis revenez dans WaptStudio pour rattacher le resultat manuel a l'historique."
+            : "Cette action WAPT peut demander le mot de passe du certificat. Copiez la commande ci-dessous, lancez-la dans un terminal, saisissez les secrets uniquement quand WAPT les demande, puis revenez dans WaptStudio pour rattacher le resultat manuel a l'historique.";
+
+    private static string GetManualSelectArtifactButtonText(string actionType)
+        => string.Equals(actionType, "Upload", StringComparison.OrdinalIgnoreCase)
+            ? "Selectionner le .wapt uploade"
+            : "Selectionner le .wapt associe";
+
+    private static string BuildHistoryActionType(string actionType, CommandExecutionResult result)
+    {
+        if (result.IsDryRun)
+        {
+            return $"{actionType}DryRun";
+        }
+
+        if (result.WasInteractiveExecutionAttempted)
+        {
+            return $"{actionType}InteractiveExecuted";
+        }
+
+        return actionType;
+    }
 
     private void DisplayPackageInfo(PackageInfo packageInfo)
     {
@@ -665,9 +937,13 @@ public sealed class MainForm : Form
         {
             AppendLog("Aucune execution reelle n'a ete lancee car le mode dry-run est actif.");
         }
-        else if (result.RequiresUserInteraction)
+        else if (result.RequiresExternalManualWorkflow)
         {
-            AppendLog("Cette action necessite une interaction utilisateur dans un terminal externe.");
+            AppendLog("Cette action necessite un terminal externe pour finaliser la commande WAPT.");
+        }
+        else if (result.ManualFallbackRecommended)
+        {
+            AppendLog("L'execution assistee n'a pas abouti de facon fiable. Un fallback manuel peut etre utilise.");
         }
         else if (result.IsConfigurationBlocked)
         {
@@ -734,14 +1010,24 @@ public sealed class MainForm : Form
             return $"{actionType}: succes simule en dry-run.";
         }
 
-        if (result.RequiresUserInteraction)
+        if (result.RequiresExternalManualWorkflow)
         {
-            return $"{actionType}: interaction certificat requise. Lancez la commande manuellement.";
+            return $"{actionType}: fallback manuel prepare. Lancez la commande dans un terminal externe.";
+        }
+
+        if (result.ManualFallbackRecommended)
+        {
+            return $"{actionType}: echec ou fiabilite insuffisante de l'execution assistee. Workflow manuel recommande.";
         }
 
         if (result.IsConfigurationBlocked)
         {
             return $"{actionType}: action bloquee. {result.Summary}";
+        }
+
+        if (result.WasInteractiveExecutionAttempted && result.IsSuccess)
+        {
+            return $"{actionType}: execution assistee reussie.";
         }
 
         if (result.IsSuccess)
@@ -829,6 +1115,69 @@ public sealed class MainForm : Form
         return !string.IsNullOrWhiteSpace(waptExecutablePath)
             && Path.IsPathRooted(waptExecutablePath)
             && File.Exists(waptExecutablePath);
+    }
+
+    private WaptExecutionContext? PromptForCredentials(string title, string description, bool requireCertificatePassword, bool requireAdminCredentials)
+    {
+        using var form = new CredentialPromptForm(title, description, requireCertificatePassword, requireAdminCredentials, requireAdminCredentials);
+        return form.ShowDialog(this) == DialogResult.OK ? form.ExecutionContext : null;
+    }
+
+    private string? ResolveUploadWaptFilePath(string packageFolder, string? explicitWaptFilePath, bool allowExpectedPathWhenMissing)
+    {
+        if (!string.IsNullOrWhiteSpace(explicitWaptFilePath) && (File.Exists(explicitWaptFilePath) || allowExpectedPathWhenMissing))
+        {
+            return explicitWaptFilePath;
+        }
+
+        var expectedWaptFilePath = ResolveExpectedWaptFilePath(packageFolder, allowExpectedPathWhenMissing);
+        if (!string.IsNullOrWhiteSpace(expectedWaptFilePath) && (File.Exists(expectedWaptFilePath) || allowExpectedPathWhenMissing))
+        {
+            return expectedWaptFilePath;
+        }
+
+        using var dialog = new OpenFileDialog
+        {
+            Filter = "Paquets WAPT (*.wapt)|*.wapt|Tous les fichiers (*.*)|*.*",
+            Title = "Selectionner le paquet .wapt a uploader",
+            InitialDirectory = Directory.Exists(packageFolder) ? packageFolder : Environment.GetFolderPath(Environment.SpecialFolder.Desktop)
+        };
+
+        return dialog.ShowDialog(this) == DialogResult.OK ? dialog.FileName : null;
+    }
+
+    private string? ResolveExpectedWaptFilePath(string packageFolder, bool allowExpectedPathWhenMissing)
+    {
+        var expectedFileName = BuildExpectedWaptFileName();
+        var candidateFiles = Directory.EnumerateFiles(packageFolder, "*.wapt", SearchOption.AllDirectories)
+            .OrderByDescending(File.GetLastWriteTimeUtc)
+            .ToList();
+
+        if (!string.IsNullOrWhiteSpace(expectedFileName))
+        {
+            var expectedMatch = candidateFiles.FirstOrDefault(path => string.Equals(Path.GetFileName(path), expectedFileName, StringComparison.OrdinalIgnoreCase));
+            if (!string.IsNullOrWhiteSpace(expectedMatch))
+            {
+                return expectedMatch;
+            }
+
+            if (allowExpectedPathWhenMissing)
+            {
+                return Path.Combine(packageFolder, expectedFileName);
+            }
+        }
+
+        return candidateFiles.FirstOrDefault();
+    }
+
+    private string? BuildExpectedWaptFileName()
+    {
+        if (string.IsNullOrWhiteSpace(_currentPackage?.PackageName) || string.IsNullOrWhiteSpace(_currentPackage?.Version))
+        {
+            return null;
+        }
+
+        return $"{_currentPackage.PackageName}_{_currentPackage.Version}.wapt";
     }
 
     private string GetPackageFolder()
@@ -922,4 +1271,8 @@ public sealed class MainForm : Form
         string WaptResultSummary,
         string WaptCommand,
         bool IsDryRunEnabled);
+
+    private sealed record ManualWorkflowOutcome(bool Confirmed, string? ArtifactPath);
+
+    private sealed record ActionHandlingOutcome(bool Completed, string? ArtifactPath);
 }
