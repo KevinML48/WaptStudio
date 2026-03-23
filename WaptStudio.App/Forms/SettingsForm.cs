@@ -173,8 +173,8 @@ public sealed class SettingsForm : Form
     {
         using var dialog = new OpenFileDialog
         {
-            Filter = "Cles (*.pem;*.key)|*.pem;*.key|Tous les fichiers (*.*)|*.*",
-            Title = "Selectionner la cle de signature"
+            Filter = "Certificats WAPT (*.p12;*.pem)|*.p12;*.pem|Tous les fichiers (*.*)|*.*",
+            Title = "Selectionner le certificat de signature WAPT"
         };
 
         if (dialog.ShowDialog(this) == DialogResult.OK)

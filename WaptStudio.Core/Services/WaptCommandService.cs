@@ -70,13 +70,14 @@ public sealed class WaptCommandService : IWaptCommandService
         var executablePath = string.IsNullOrWhiteSpace(settings.WaptExecutablePath)
             ? CommandExecutionResult.DefaultExecutableName
             : settings.WaptExecutablePath;
+        var effectiveTemplate = NormalizeTemplate(actionType, template);
 
-        if (string.IsNullOrWhiteSpace(template))
+        if (string.IsNullOrWhiteSpace(effectiveTemplate))
         {
             return CreateBlockedResult(executablePath, string.Empty, workingDirectory, "Aucun argument de commande WAPT n'est configure.");
         }
 
-        var arguments = BuildArguments(template, settings, packageFolder, out var buildError);
+        var arguments = BuildArguments(effectiveTemplate, settings, packageFolder, out var buildError);
         var executedCommand = BuildExecutedCommand(executablePath, arguments);
 
         if (settings.DryRunEnabled)
@@ -84,19 +85,19 @@ public sealed class WaptCommandService : IWaptCommandService
             return CreateDryRunResult(executablePath, arguments, executedCommand, workingDirectory);
         }
 
-        var preconditionFailure = ValidateRealExecutionPreconditions(actionType, settings, template, packageFolder, buildError);
+        var preconditionFailure = ValidateRealExecutionPreconditions(actionType, settings, effectiveTemplate, packageFolder, buildError);
         if (!string.IsNullOrWhiteSpace(preconditionFailure))
         {
             return CreateBlockedResult(executablePath, arguments, workingDirectory, preconditionFailure, executedCommand);
         }
 
-        if (RequiresInteractiveBuildConsole(actionType, template))
+        if (RequiresInteractiveConsole(actionType, effectiveTemplate))
         {
             return CreateInteractiveResult(
                 executablePath,
                 arguments,
                 workingDirectory,
-                "Build reel interactif non supporte dans l'interface. Lancez la commande manuellement dans un terminal pour saisir le mot de passe du certificat.",
+                CreateInteractiveMessage(actionType),
                 executedCommand);
         }
 
@@ -144,6 +145,29 @@ public sealed class WaptCommandService : IWaptCommandService
         return Regex.Replace(arguments, @"\s{2,}", " ").Trim();
     }
 
+    private static string NormalizeTemplate(WaptActionType actionType, string template)
+    {
+        if (actionType != WaptActionType.Sign || string.IsNullOrWhiteSpace(template))
+        {
+            return template;
+        }
+
+        if (!template.Contains("sign-package", StringComparison.OrdinalIgnoreCase))
+        {
+            return template;
+        }
+
+        var normalizedTemplate = Regex.Replace(
+            template,
+            @"\s*--private-key\s+(?:\{signingKeyPath\}|""[^""]+""|\S+)",
+            string.Empty,
+            RegexOptions.IgnoreCase);
+
+        return string.IsNullOrWhiteSpace(normalizedTemplate)
+            ? "sign-package {packageFolder}"
+            : Regex.Replace(normalizedTemplate, @"\s{2,}", " ").Trim();
+    }
+
     private static string? ValidateRealExecutionPreconditions(WaptActionType actionType, AppSettings settings, string template, string? packageFolder, string? buildError)
     {
         if (string.IsNullOrWhiteSpace(settings.WaptExecutablePath))
@@ -171,6 +195,12 @@ public sealed class WaptCommandService : IWaptCommandService
             if (string.IsNullOrWhiteSpace(settings.SigningKeyPath))
             {
                 return "Cle de signature non renseignee.";
+            }
+
+            var signingKeyValidationFailure = ValidateSigningKeyPath(settings.SigningKeyPath);
+            if (!string.IsNullOrWhiteSpace(signingKeyValidationFailure))
+            {
+                return signingKeyValidationFailure;
             }
 
             if (Path.IsPathRooted(settings.SigningKeyPath) && !File.Exists(settings.SigningKeyPath))
@@ -203,9 +233,30 @@ public sealed class WaptCommandService : IWaptCommandService
         return null;
     }
 
-    private static bool RequiresInteractiveBuildConsole(WaptActionType actionType, string template)
-        => actionType == WaptActionType.Build
-            && template.Contains("build-package", StringComparison.OrdinalIgnoreCase);
+    private static string? ValidateSigningKeyPath(string signingKeyPath)
+    {
+        var extension = Path.GetExtension(signingKeyPath)?.ToLowerInvariant();
+
+        return extension switch
+        {
+            ".p12" => null,
+            ".pem" => null,
+            ".crt" => "Le certificat .crt seul n'est pas accepte pour la signature WAPT. Utilisez un fichier .p12 ou .pem.",
+            _ => "Format de cle/certificat non supporte pour la signature WAPT. Utilisez un fichier .p12 ou .pem."
+        };
+    }
+
+    private static bool RequiresInteractiveConsole(WaptActionType actionType, string template)
+        => (actionType == WaptActionType.Build && template.Contains("build-package", StringComparison.OrdinalIgnoreCase))
+            || (actionType == WaptActionType.Sign && template.Contains("sign-package", StringComparison.OrdinalIgnoreCase));
+
+    private static string CreateInteractiveMessage(WaptActionType actionType)
+        => actionType switch
+        {
+            WaptActionType.Build => "Build reel interactif non supporte dans l'interface. Lancez la commande manuellement dans un terminal pour saisir le mot de passe du certificat.",
+            WaptActionType.Sign => "Signature reelle interactive non supportee dans l'interface. Lancez la commande manuellement dans un terminal pour saisir le mot de passe du certificat.",
+            _ => "Interaction utilisateur requise pour terminer la commande."
+        };
 
     private static string BuildExecutedCommand(string executablePath, string arguments) => $"{executablePath} {arguments}".Trim();
 

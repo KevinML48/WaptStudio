@@ -36,7 +36,7 @@ public sealed class MainForm : Form
     private readonly Button _diagnosticEnvironmentButton = new() { Text = "Diagnostic environnement", AutoSize = true };
     private readonly Button _openPackageFolderButton = new() { Text = "Ouvrir dossier paquet", AutoSize = true };
     private readonly Button _openPowerShellHereButton = new() { Text = "Ouvrir PowerShell ici", AutoSize = true };
-    private readonly Button _manualBuildButton = new() { Text = "Renseigner build manuel", AutoSize = true };
+    private readonly Button _manualBuildButton = new() { Text = "Renseigner action manuelle", AutoSize = true };
     private readonly Button _openLogsFolderButton = new() { Text = "Ouvrir dossier logs", AutoSize = true };
     private readonly Button _saveReportButton = new() { Text = "Sauvegarder rapport", AutoSize = true };
     private readonly Button _historyDetailsButton = new() { Text = "Voir detail historique", AutoSize = true };
@@ -46,8 +46,9 @@ public sealed class MainForm : Form
     private AppSettings _settings = new();
     private string _lastActionResult = "Aucune action";
     private IReadOnlyList<HistoryEntry> _historyEntries = Array.Empty<HistoryEntry>();
-    private string? _lastPreparedManualBuildCommand;
-    private string? _lastPreparedManualBuildPackageFolder;
+    private string? _lastPreparedManualActionType;
+    private string? _lastPreparedManualCommand;
+    private string? _lastPreparedManualPackageFolder;
 
     public MainForm(AppRuntime runtime)
     {
@@ -205,7 +206,7 @@ public sealed class MainForm : Form
         _diagnosticEnvironmentButton.Click += async (_, _) => await ShowEnvironmentDiagnosticsAsync().ConfigureAwait(true);
         _openPackageFolderButton.Click += (_, _) => OpenPackageFolder();
         _openPowerShellHereButton.Click += (_, _) => OpenPowerShellHere();
-        _manualBuildButton.Click += async (_, _) => await ShowManualBuildWorkflowAsync().ConfigureAwait(true);
+        _manualBuildButton.Click += async (_, _) => await ShowManualWorkflowAsync().ConfigureAwait(true);
         _openLogsFolderButton.Click += (_, _) => OpenFolder(AppPaths.ResolveLogsDirectory(_settings));
         _saveReportButton.Click += async (_, _) => await SaveReportAsync().ConfigureAwait(true);
         _historyDetailsButton.Click += async (_, _) => await ShowSelectedHistoryDetailsAsync().ConfigureAwait(true);
@@ -389,12 +390,13 @@ public sealed class MainForm : Form
             SetCommandActionResult(actionMessage, result);
 
             var historyActionType = actionType;
-            if (string.Equals(actionType, "Build", StringComparison.OrdinalIgnoreCase) && result.RequiresUserInteraction)
+            if (result.RequiresUserInteraction && SupportsManualWorkflow(actionType))
             {
-                historyActionType = "BuildManualPrepared";
-                _lastPreparedManualBuildCommand = result.ExecutedCommand;
-                _lastPreparedManualBuildPackageFolder = packageFolder;
-                await ShowManualBuildWorkflowAsync(result.ExecutedCommand, packageFolder).ConfigureAwait(true);
+                historyActionType = $"{actionType}ManualPrepared";
+                _lastPreparedManualActionType = actionType;
+                _lastPreparedManualCommand = result.ExecutedCommand;
+                _lastPreparedManualPackageFolder = packageFolder;
+                await ShowManualWorkflowAsync(actionType, result.ExecutedCommand, packageFolder).ConfigureAwait(true);
             }
 
             await RegisterHistoryAsync(historyActionType, result.IsSuccess, packageFolder, _currentPackage?.PackageName, actionMessage, result, _currentPackage?.Version, _currentPackage?.Version).ConfigureAwait(true);
@@ -489,39 +491,49 @@ public sealed class MainForm : Form
         form.ShowDialog(this);
     }
 
-    private async Task ShowManualBuildWorkflowAsync(string? preparedCommand = null, string? packageFolder = null)
+    private async Task ShowManualWorkflowAsync(string? actionType = null, string? preparedCommand = null, string? packageFolder = null)
     {
+        var resolvedActionType = !string.IsNullOrWhiteSpace(actionType)
+            ? actionType
+            : _lastPreparedManualActionType;
         var resolvedPackageFolder = !string.IsNullOrWhiteSpace(packageFolder)
             ? packageFolder
-            : GetSafePackageFolder();
+            : _lastPreparedManualPackageFolder ?? GetSafePackageFolder();
         var resolvedCommand = !string.IsNullOrWhiteSpace(preparedCommand)
             ? preparedCommand
-            : _lastPreparedManualBuildCommand;
+            : _lastPreparedManualCommand;
 
-        if (string.IsNullOrWhiteSpace(resolvedPackageFolder) || !Directory.Exists(resolvedPackageFolder))
+        if (string.IsNullOrWhiteSpace(resolvedActionType) || !SupportsManualWorkflow(resolvedActionType))
         {
-            MessageBox.Show(this, "Selectionnez d'abord un dossier de paquet valide.", "Build manuel", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            MessageBox.Show(this, "Aucune action manuelle preparee n'est disponible.", "Workflow manuel", MessageBoxButtons.OK, MessageBoxIcon.Information);
             return;
         }
 
-        using var form = new ManualBuildWorkflowForm(resolvedPackageFolder, resolvedCommand);
+        if (string.IsNullOrWhiteSpace(resolvedPackageFolder) || !Directory.Exists(resolvedPackageFolder))
+        {
+            MessageBox.Show(this, "Selectionnez d'abord un dossier de paquet valide.", "Workflow manuel", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
+        }
+
+        using var form = new ManualBuildWorkflowForm(GetManualWorkflowName(resolvedActionType), resolvedPackageFolder, resolvedCommand, GetManualArtifactLabel(resolvedActionType));
         if (form.ShowDialog(this) != DialogResult.OK)
         {
             return;
         }
 
-        if (!form.ManualBuildConfirmed)
+        if (!form.ManualActionConfirmed)
         {
             return;
         }
 
-        _lastPreparedManualBuildCommand = resolvedCommand;
-        _lastPreparedManualBuildPackageFolder = resolvedPackageFolder;
+        _lastPreparedManualActionType = resolvedActionType;
+        _lastPreparedManualCommand = resolvedCommand;
+        _lastPreparedManualPackageFolder = resolvedPackageFolder;
 
         var generatedPackagePath = form.GeneratedPackagePath;
         var confirmationMessage = string.IsNullOrWhiteSpace(generatedPackagePath)
-            ? "Build manuel confirme par l'utilisateur."
-            : $"Build manuel confirme. Paquet genere: {generatedPackagePath}";
+            ? $"{GetManualHistoryLabel(resolvedActionType)} manuel confirme par l'utilisateur."
+            : $"{GetManualHistoryLabel(resolvedActionType)} manuel confirme. Artifact renseigne: {generatedPackagePath}";
 
         var confirmationResult = new CommandExecutionResult
         {
@@ -536,9 +548,28 @@ public sealed class MainForm : Form
         };
 
         AppendLog(confirmationMessage);
-        SetActionResult("Build manuel rattache a l'historique.");
-        await RegisterHistoryAsync("BuildManualConfirmed", true, resolvedPackageFolder, _currentPackage?.PackageName, confirmationMessage, confirmationResult, _currentPackage?.Version, _currentPackage?.Version).ConfigureAwait(true);
+        SetActionResult($"{GetManualHistoryLabel(resolvedActionType)} manuel rattache a l'historique.");
+        await RegisterHistoryAsync($"{resolvedActionType}ManualConfirmed", true, resolvedPackageFolder, _currentPackage?.PackageName, confirmationMessage, confirmationResult, _currentPackage?.Version, _currentPackage?.Version).ConfigureAwait(true);
     }
+
+    private static bool SupportsManualWorkflow(string actionType)
+        => string.Equals(actionType, "Build", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(actionType, "Sign", StringComparison.OrdinalIgnoreCase);
+
+    private static string GetManualWorkflowName(string actionType)
+        => string.Equals(actionType, "Sign", StringComparison.OrdinalIgnoreCase)
+            ? "signature"
+            : "build";
+
+    private static string GetManualHistoryLabel(string actionType)
+        => string.Equals(actionType, "Sign", StringComparison.OrdinalIgnoreCase)
+            ? "Signature"
+            : "Build";
+
+    private static string GetManualArtifactLabel(string actionType)
+        => string.Equals(actionType, "Sign", StringComparison.OrdinalIgnoreCase)
+            ? "Chemin du .wapt signe (optionnel si vous voulez tracer l'artifact final)"
+            : "Chemin du .wapt genere (optionnel mais recommande)";
 
     private void DisplayPackageInfo(PackageInfo packageInfo)
     {

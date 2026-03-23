@@ -174,6 +174,7 @@ Ce mode est recommande pour verifier les templates de commande avant tout test r
 Limite V1 importante:
 
 - un `build-package` reel qui demande un mot de passe de certificat interactif n'est pas pilote directement dans l'UI
+- un `sign-package` reel qui demande un mot de passe de certificat interactif n'est pas pilote directement dans l'UI
 - dans ce cas, WaptStudio ouvre une fenetre dediee avec la commande preparee, un bouton de copie, un bouton `Ouvrir PowerShell ici` et un rattachement simple du resultat manuel a l'historique
 
 ## Prerequis
@@ -251,10 +252,12 @@ Exemple prudent de templates initiaux:
 - test WAPT: `--version`
 - validation: `show {packageFolder}`
 - build: `build-package {packageFolder}`
-- sign: `sign-package --private-key {signingKeyPath} {packageFolder}`
+- sign: `sign-package {packageFolder}`
 - upload: `upload-package {repositoryOption} {overwriteFlag} {packageFolder}`
 
 Ces templates doivent etre confirmes sur votre version reelle de WAPT.
+
+Pour la signature locale, WaptStudio attend un fichier `.p12` ou `.pem`. Un fichier `.crt` seul est refuse car il ne suffit pas pour le workflow de signature interactive pris en charge par cette V1.
 
 Au demarrage, l'application journalise aussi:
 

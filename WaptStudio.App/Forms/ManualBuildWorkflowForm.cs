@@ -10,12 +10,12 @@ public sealed class ManualBuildWorkflowForm : Form
     private readonly TextBox _commandTextBox;
     private readonly TextBox _generatedPackageTextBox;
 
-    public ManualBuildWorkflowForm(string packageFolder, string? preparedCommand)
+    public ManualBuildWorkflowForm(string workflowName, string packageFolder, string? preparedCommand, string artifactLabel)
     {
         _packageFolder = packageFolder;
         GeneratedPackagePath = string.Empty;
 
-        Text = "Workflow build manuel WAPT";
+        Text = $"Workflow {workflowName} manuel WAPT";
         Width = 980;
         Height = 520;
         StartPosition = FormStartPosition.CenterParent;
@@ -27,7 +27,7 @@ public sealed class ManualBuildWorkflowForm : Form
             Dock = DockStyle.Top,
             AutoSize = true,
             MaximumSize = new System.Drawing.Size(920, 0),
-            Text = "Le build reel WAPT demande une interaction certificat. Copiez la commande ci-dessous, lancez-la dans un terminal, saisissez le mot de passe du certificat, puis revenez dans WaptStudio pour rattacher le resultat manuel a l'historique."
+            Text = "Cette action WAPT demande une interaction certificat. Copiez la commande ci-dessous, lancez-la dans un terminal, saisissez le mot de passe du certificat, puis revenez dans WaptStudio pour rattacher le resultat manuel a l'historique."
         };
 
         _commandTextBox = new TextBox
@@ -63,8 +63,8 @@ public sealed class ManualBuildWorkflowForm : Form
         var selectPackageButton = new Button { Text = "Selectionner le .wapt genere", AutoSize = true };
         selectPackageButton.Click += (_, _) => SelectGeneratedPackage();
 
-        var confirmButton = new Button { Text = "Marquer comme build manuel reussi", AutoSize = true };
-        confirmButton.Click += (_, _) => ConfirmManualBuild();
+        var confirmButton = new Button { Text = "Marquer comme operation manuelle reussie", AutoSize = true };
+        confirmButton.Click += (_, _) => ConfirmManualAction();
 
         var closeButton = new Button { Text = "Fermer", AutoSize = true };
         closeButton.Click += (_, _) => Close();
@@ -103,7 +103,7 @@ public sealed class ManualBuildWorkflowForm : Form
         layout.Controls.Add(_commandTextBox, 0, 2);
         layout.Controls.Add(new Label { Text = "Dossier du paquet", AutoSize = true, Padding = new Padding(0, 12, 0, 4) }, 0, 3);
         layout.Controls.Add(packageFolderTextBox, 0, 4);
-        layout.Controls.Add(new Label { Text = "Chemin du .wapt genere (optionnel mais recommande)", AutoSize = true, Padding = new Padding(0, 12, 0, 4) }, 0, 5);
+        layout.Controls.Add(new Label { Text = artifactLabel, AutoSize = true, Padding = new Padding(0, 12, 0, 4) }, 0, 5);
         layout.Controls.Add(_generatedPackageTextBox, 0, 6);
         layout.Controls.Add(buttonsFlow, 0, 7);
 
@@ -112,18 +112,18 @@ public sealed class ManualBuildWorkflowForm : Form
 
     public string GeneratedPackagePath { get; private set; }
 
-    public bool ManualBuildConfirmed { get; private set; }
+    public bool ManualActionConfirmed { get; private set; }
 
     private void CopyCommand()
     {
         if (string.IsNullOrWhiteSpace(_commandTextBox.Text))
         {
-            MessageBox.Show(this, "Aucune commande a copier.", "Build manuel", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            MessageBox.Show(this, "Aucune commande a copier.", Text, MessageBoxButtons.OK, MessageBoxIcon.Information);
             return;
         }
 
         Clipboard.SetText(_commandTextBox.Text);
-        MessageBox.Show(this, "Commande copiee dans le presse-papiers.", "Build manuel", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        MessageBox.Show(this, "Commande copiee dans le presse-papiers.", Text, MessageBoxButtons.OK, MessageBoxIcon.Information);
     }
 
     private void OpenPowerShellHere()
@@ -154,9 +154,9 @@ public sealed class ManualBuildWorkflowForm : Form
         _generatedPackageTextBox.Text = dialog.FileName;
     }
 
-    private void ConfirmManualBuild()
+    private void ConfirmManualAction()
     {
-        ManualBuildConfirmed = true;
+        ManualActionConfirmed = true;
         DialogResult = DialogResult.OK;
         Close();
     }

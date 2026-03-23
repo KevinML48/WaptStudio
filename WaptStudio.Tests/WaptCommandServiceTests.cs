@@ -1,3 +1,5 @@
+using System;
+using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using WaptStudio.Core.Models;
@@ -61,7 +63,7 @@ public sealed class WaptCommandServiceTests
         var settingsService = new TestSettingsService(new AppSettings
         {
             WaptExecutablePath = @"C:\WAPT\wapt-get.exe",
-            SignPackageArguments = "sign-package --private-key {signingKeyPath} {packageFolder}",
+            SignPackageArguments = "sign-package {packageFolder}",
             EnableSigning = true,
             DryRunEnabled = true
         });
@@ -74,6 +76,7 @@ public sealed class WaptCommandServiceTests
         Assert.False(result.IsConfigurationBlocked);
         Assert.False(commandExecutionService.WasCalled);
         Assert.Contains("sign-package", result.ExecutedCommand);
+        Assert.DoesNotContain("--private-key", result.ExecutedCommand);
     }
 
     [Fact]
@@ -105,7 +108,7 @@ public sealed class WaptCommandServiceTests
         var settingsService = new TestSettingsService(new AppSettings
         {
             WaptExecutablePath = @"C:\WAPT\wapt-get.exe",
-            SignPackageArguments = "sign-package --private-key {signingKeyPath} {packageFolder}",
+            SignPackageArguments = "sign-package {packageFolder}",
             EnableSigning = true,
             DryRunEnabled = false
         });
@@ -118,6 +121,106 @@ public sealed class WaptCommandServiceTests
         Assert.True(result.IsConfigurationBlocked);
         Assert.False(commandExecutionService.WasCalled);
         Assert.Equal("Cle de signature non renseignee.", result.StandardError);
+    }
+
+    [Fact]
+    public async Task SignPackageAsync_NormalizesDeprecatedPrivateKeySyntaxAndRequiresManualWorkflow()
+    {
+        var certificatePath = CreateTempCertificateFile(".p12");
+
+        try
+        {
+            var commandExecutionService = new TrackingCommandExecutionService();
+            var settingsService = new TestSettingsService(new AppSettings
+            {
+                WaptExecutablePath = @"C:\Program Files (x86)\wapt\wapt-get.exe",
+                SignPackageArguments = "sign-package --private-key {signingKeyPath} {packageFolder}",
+                EnableSigning = true,
+                SigningKeyPath = certificatePath,
+                DryRunEnabled = false
+            });
+            var service = new WaptCommandService(commandExecutionService, settingsService);
+
+            var result = await service.SignPackageAsync(@"C:\waptdev\sample");
+
+            Assert.False(result.IsDryRun);
+            Assert.False(result.IsSuccess);
+            Assert.True(result.RequiresUserInteraction);
+            Assert.False(result.IsConfigurationBlocked);
+            Assert.False(commandExecutionService.WasCalled);
+            Assert.Contains("sign-package", result.ExecutedCommand);
+            Assert.Contains("C:\\waptdev\\sample", result.ExecutedCommand.Replace("\"", string.Empty));
+            Assert.DoesNotContain("--private-key", result.ExecutedCommand);
+            Assert.Contains("Signature reelle interactive non supportee", result.StandardError);
+        }
+        finally
+        {
+            File.Delete(certificatePath);
+        }
+    }
+
+    [Fact]
+    public async Task SignPackageAsync_BlocksWhenSigningKeyUsesCrtExtensionOutsideDryRun()
+    {
+        var certificatePath = CreateTempCertificateFile(".crt");
+
+        try
+        {
+            var commandExecutionService = new TrackingCommandExecutionService();
+            var settingsService = new TestSettingsService(new AppSettings
+            {
+                WaptExecutablePath = @"C:\WAPT\wapt-get.exe",
+                SignPackageArguments = "sign-package {packageFolder}",
+                EnableSigning = true,
+                SigningKeyPath = certificatePath,
+                DryRunEnabled = false
+            });
+            var service = new WaptCommandService(commandExecutionService, settingsService);
+
+            var result = await service.SignPackageAsync(@"C:\Packages\Sample");
+
+            Assert.False(result.IsDryRun);
+            Assert.False(result.IsSuccess);
+            Assert.True(result.IsConfigurationBlocked);
+            Assert.False(commandExecutionService.WasCalled);
+            Assert.Equal("Le certificat .crt seul n'est pas accepte pour la signature WAPT. Utilisez un fichier .p12 ou .pem.", result.StandardError);
+        }
+        finally
+        {
+            File.Delete(certificatePath);
+        }
+    }
+
+    [Fact]
+    public async Task SignPackageAsync_AllowsPemForManualWorkflowOutsideDryRun()
+    {
+        var certificatePath = CreateTempCertificateFile(".pem");
+
+        try
+        {
+            var commandExecutionService = new TrackingCommandExecutionService();
+            var settingsService = new TestSettingsService(new AppSettings
+            {
+                WaptExecutablePath = @"C:\WAPT\wapt-get.exe",
+                SignPackageArguments = "sign-package {packageFolder}",
+                EnableSigning = true,
+                SigningKeyPath = certificatePath,
+                DryRunEnabled = false
+            });
+            var service = new WaptCommandService(commandExecutionService, settingsService);
+
+            var result = await service.SignPackageAsync(@"C:\Packages\Sample");
+
+            Assert.False(result.IsDryRun);
+            Assert.False(result.IsSuccess);
+            Assert.True(result.RequiresUserInteraction);
+            Assert.False(result.IsConfigurationBlocked);
+            Assert.False(commandExecutionService.WasCalled);
+        }
+        finally
+        {
+            File.Delete(certificatePath);
+        }
     }
 
     [Fact]
@@ -189,5 +292,12 @@ public sealed class WaptCommandServiceTests
 
         public Task SaveAsync(AppSettings settings, CancellationToken cancellationToken = default)
             => Task.CompletedTask;
+    }
+
+    private static string CreateTempCertificateFile(string extension)
+    {
+        var tempPath = Path.Combine(Path.GetTempPath(), $"waptstudio-sign-test-{Guid.NewGuid():N}{extension}");
+        File.WriteAllText(tempPath, "test-certificate");
+        return tempPath;
     }
 }
