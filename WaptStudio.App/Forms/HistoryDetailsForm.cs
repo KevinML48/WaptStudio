@@ -35,6 +35,8 @@ public sealed class HistoryDetailsForm : Form
         builder.AppendLine($"Utilisateur Windows: {entry.WindowsUser}");
         builder.AppendLine($"Version avant: {entry.VersionBefore ?? "N/A"}");
         builder.AppendLine($"Version apres: {entry.VersionAfter ?? "N/A"}");
+        builder.AppendLine($"Verdict readiness: {entry.ReadinessVerdict ?? "N/A"}");
+        builder.AppendLine($"Chemin .wapt: {entry.WaptArtifactPath ?? "N/A"}");
         builder.AppendLine($"Duree (ms): {entry.DurationMilliseconds}");
         builder.AppendLine($"Exit code: {entry.ExitCode}");
         builder.AppendLine($"Message: {entry.Message}");

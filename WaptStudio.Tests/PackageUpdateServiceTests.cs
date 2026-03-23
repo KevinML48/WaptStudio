@@ -3,6 +3,7 @@ using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using WaptStudio.Core.Models;
+using WaptStudio.Core.Configuration;
 using WaptStudio.Core.Services;
 using WaptStudio.Core.Services.Interfaces;
 using Xunit;
@@ -35,7 +36,8 @@ public sealed class PackageUpdateServiceTests : IDisposable
 
         var inspector = new PackageInspectorService();
         var packageInfo = await inspector.AnalyzePackageAsync(packageFolder);
-        var service = new PackageUpdateService(inspector, new TestSettingsService());
+        var settingsService = new TestSettingsService(new AppSettings { CreateBackups = true, BackupsDirectory = Path.Combine(_rootDirectory, "backups") });
+        var service = new PackageUpdateService(inspector, settingsService, new BackupRestoreService(settingsService));
 
         var plan = await service.PreviewReplacementAsync(packageInfo, newInstallerSource);
 
@@ -48,6 +50,10 @@ public sealed class PackageUpdateServiceTests : IDisposable
         Assert.Equal("WaptStudio 2501", plan.TargetVisibleName);
         Assert.Equal(Path.Combine(_rootDirectory, "cd48-waptstudio_2501_Windows_DEV-wapt"), plan.TargetPackageFolder);
         Assert.Equal("cd48-waptstudio_2501.wapt", plan.ExpectedWaptFileName);
+        Assert.True(plan.BackupWillBeCreated);
+        Assert.Contains("7z2409.msi", plan.FilesDeleted);
+        Assert.Contains("setup.py", plan.FilesModified);
+        Assert.Contains("control", plan.FilesModified);
     }
 
     [Fact]
@@ -66,7 +72,8 @@ public sealed class PackageUpdateServiceTests : IDisposable
 
         var inspector = new PackageInspectorService();
         var packageInfo = await inspector.AnalyzePackageAsync(packageFolder);
-        var service = new PackageUpdateService(inspector, new TestSettingsService());
+        var settingsService = new TestSettingsService(new AppSettings { CreateBackups = true, BackupsDirectory = Path.Combine(_rootDirectory, "backups") });
+        var service = new PackageUpdateService(inspector, settingsService, new BackupRestoreService(settingsService));
 
         var result = await service.ReplaceInstallerAsync(packageInfo, newInstallerSource);
         var updatedPackageFolder = Path.Combine(_rootDirectory, "tis-package_2.0.0-wapt");
@@ -94,13 +101,18 @@ public sealed class PackageUpdateServiceTests : IDisposable
         Assert.Contains("description: Application TIS Package version 2.0.0", controlContent);
         Assert.Contains("description_fr: Application TIS Package version 2.0.0 FR", controlContent);
         Assert.Contains("package: tis.package", controlContent);
-        Assert.True(File.Exists(Path.Combine(updatedPackageFolder, "app-1.0.0.msi.bak")));
+        Assert.NotNull(result.BackupDirectory);
+        Assert.True(Directory.Exists(result.BackupDirectory!));
+        Assert.True(File.Exists(Path.Combine(result.BackupDirectory!, "snapshot", "app-1.0.0.msi")));
+        Assert.True(File.Exists(Path.Combine(result.BackupDirectory!, "snapshot", "setup.py")));
+        Assert.True(File.Exists(Path.Combine(result.BackupDirectory!, "snapshot", "control")));
         Assert.Contains(result.ChangeSummaryLines, line => line.Contains("Version: 1.0.0 -> 2.0.0", StringComparison.Ordinal));
         Assert.Contains(result.ChangeSummaryLines, line => line.Contains("Nom: TIS Package 1.0.0 -> TIS Package 2.0.0", StringComparison.Ordinal));
         Assert.Contains(result.ChangeSummaryLines, line => line.Contains("Description: Application TIS Package version 1.0.0 -> Application TIS Package version 2.0.0", StringComparison.Ordinal));
         Assert.Contains(result.ChangeSummaryLines, line => line.Contains("Dossier:", StringComparison.Ordinal));
         Assert.NotNull(result.SynchronizationPlan);
         Assert.Equal("tis.package_2.0.0.wapt", result.SynchronizationPlan!.ExpectedWaptFileName);
+        Assert.Contains("app-1.0.0.msi", result.SynchronizationPlan.FilesDeleted);
     }
 
     public void Dispose()
@@ -113,8 +125,15 @@ public sealed class PackageUpdateServiceTests : IDisposable
 
     private sealed class TestSettingsService : ISettingsService
     {
+        private readonly AppSettings _settings;
+
+        public TestSettingsService(AppSettings? settings = null)
+        {
+            _settings = settings ?? new AppSettings { CreateBackups = false };
+        }
+
         public Task<AppSettings> LoadAsync(CancellationToken cancellationToken = default)
-            => Task.FromResult(new AppSettings { CreateBackups = false });
+            => Task.FromResult(_settings);
 
         public Task SaveAsync(AppSettings settings, CancellationToken cancellationToken = default)
             => Task.CompletedTask;

@@ -52,7 +52,9 @@ public sealed class HistoryService : IHistoryService
                     DurationMilliseconds INTEGER NOT NULL,
                     WindowsUser TEXT NOT NULL DEFAULT '',
                     VersionBefore TEXT NULL,
-                    VersionAfter TEXT NULL
+                    VersionAfter TEXT NULL,
+                    WaptArtifactPath TEXT NULL,
+                    ReadinessVerdict TEXT NULL
                 );
                 """;
 
@@ -61,6 +63,8 @@ public sealed class HistoryService : IHistoryService
             await EnsureColumnAsync(connection, "history", "WindowsUser", "TEXT NOT NULL DEFAULT ''", cancellationToken).ConfigureAwait(false);
             await EnsureColumnAsync(connection, "history", "VersionBefore", "TEXT NULL", cancellationToken).ConfigureAwait(false);
             await EnsureColumnAsync(connection, "history", "VersionAfter", "TEXT NULL", cancellationToken).ConfigureAwait(false);
+            await EnsureColumnAsync(connection, "history", "WaptArtifactPath", "TEXT NULL", cancellationToken).ConfigureAwait(false);
+            await EnsureColumnAsync(connection, "history", "ReadinessVerdict", "TEXT NULL", cancellationToken).ConfigureAwait(false);
             _initialized = true;
         }
         finally
@@ -92,7 +96,9 @@ public sealed class HistoryService : IHistoryService
                 DurationMilliseconds,
                 WindowsUser,
                 VersionBefore,
-                VersionAfter)
+                    VersionAfter,
+                    WaptArtifactPath,
+                    ReadinessVerdict)
             VALUES (
                 $timestamp,
                 $actionType,
@@ -107,7 +113,9 @@ public sealed class HistoryService : IHistoryService
                 $durationMilliseconds,
                 $windowsUser,
                 $versionBefore,
-                $versionAfter);
+                    $versionAfter,
+                    $waptArtifactPath,
+                    $readinessVerdict);
             """;
         command.Parameters.AddWithValue("$timestamp", entry.Timestamp.ToString("O"));
         command.Parameters.AddWithValue("$actionType", entry.ActionType);
@@ -123,6 +131,8 @@ public sealed class HistoryService : IHistoryService
         command.Parameters.AddWithValue("$windowsUser", entry.WindowsUser);
         command.Parameters.AddWithValue("$versionBefore", (object?)entry.VersionBefore ?? DBNull.Value);
         command.Parameters.AddWithValue("$versionAfter", (object?)entry.VersionAfter ?? DBNull.Value);
+        command.Parameters.AddWithValue("$waptArtifactPath", (object?)entry.WaptArtifactPath ?? DBNull.Value);
+        command.Parameters.AddWithValue("$readinessVerdict", (object?)entry.ReadinessVerdict ?? DBNull.Value);
 
         await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
     }
@@ -138,7 +148,7 @@ public sealed class HistoryService : IHistoryService
 
         var command = connection.CreateCommand();
         command.CommandText = """
-            SELECT Id, Timestamp, ActionType, PackageFolder, PackageName, Success, Message, ExecutedCommand, StandardOutput, StandardError, ExitCode, DurationMilliseconds, WindowsUser, VersionBefore, VersionAfter
+            SELECT Id, Timestamp, ActionType, PackageFolder, PackageName, Success, Message, ExecutedCommand, StandardOutput, StandardError, ExitCode, DurationMilliseconds, WindowsUser, VersionBefore, VersionAfter, WaptArtifactPath, ReadinessVerdict
             FROM history
             ORDER BY Id DESC
             LIMIT $take;
@@ -164,7 +174,9 @@ public sealed class HistoryService : IHistoryService
                 DurationMilliseconds = reader.GetInt32(11),
                 WindowsUser = reader.IsDBNull(12) ? string.Empty : reader.GetString(12),
                 VersionBefore = reader.IsDBNull(13) ? null : reader.GetString(13),
-                VersionAfter = reader.IsDBNull(14) ? null : reader.GetString(14)
+                VersionAfter = reader.IsDBNull(14) ? null : reader.GetString(14),
+                WaptArtifactPath = reader.IsDBNull(15) ? null : reader.GetString(15),
+                ReadinessVerdict = reader.IsDBNull(16) ? null : reader.GetString(16)
             });
         }
 
@@ -180,7 +192,7 @@ public sealed class HistoryService : IHistoryService
 
         var command = connection.CreateCommand();
         command.CommandText = """
-            SELECT Id, Timestamp, ActionType, PackageFolder, PackageName, Success, Message, ExecutedCommand, StandardOutput, StandardError, ExitCode, DurationMilliseconds, WindowsUser, VersionBefore, VersionAfter
+            SELECT Id, Timestamp, ActionType, PackageFolder, PackageName, Success, Message, ExecutedCommand, StandardOutput, StandardError, ExitCode, DurationMilliseconds, WindowsUser, VersionBefore, VersionAfter, WaptArtifactPath, ReadinessVerdict
             FROM history
             WHERE Id = $id
             LIMIT 1;
@@ -209,7 +221,9 @@ public sealed class HistoryService : IHistoryService
             DurationMilliseconds = reader.GetInt32(11),
             WindowsUser = reader.IsDBNull(12) ? string.Empty : reader.GetString(12),
             VersionBefore = reader.IsDBNull(13) ? null : reader.GetString(13),
-            VersionAfter = reader.IsDBNull(14) ? null : reader.GetString(14)
+            VersionAfter = reader.IsDBNull(14) ? null : reader.GetString(14),
+            WaptArtifactPath = reader.IsDBNull(15) ? null : reader.GetString(15),
+            ReadinessVerdict = reader.IsDBNull(16) ? null : reader.GetString(16)
         };
     }
 

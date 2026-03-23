@@ -33,4 +33,8 @@ public sealed class HistoryEntry
     public string? VersionBefore { get; set; }
 
     public string? VersionAfter { get; set; }
+
+    public string? WaptArtifactPath { get; set; }
+
+    public string? ReadinessVerdict { get; set; }
 }

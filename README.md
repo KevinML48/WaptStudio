@@ -1,362 +1,369 @@
 # WaptStudio
 
-WaptStudio est une application Windows locale en WinForms, developpee en C# sur .NET 10, pour analyser, modifier, valider, construire, signer et uploader des paquets WAPT sans interface web.
+WaptStudio est un outil Windows local en WinForms, developpe en C# sur .NET 10, pour gerer les paquets CD48 de maniere claire, securisee et exploitable.
 
-La phase 2 de consolidation fournie dans ce depot rend la V1 plus exploitable pour un premier lancement reel sur une machine Windows avec WAPT installe localement.
+Le produit final est centre sur un seul objectif metier:
 
-## Contenu reel de la solution
+- charger un dossier racine de paquets CD48
+- inventorier les paquets WAPT detectes
+- classer les paquets en MSI, EXE ou AUTRES
+- remplacer proprement un installateur MSI/EXE
+- synchroniser setup.py, control, version, name, description et description_fr quand le remplacement est fiable
+- calculer un verdict readiness lisible
+- declencher Build, Upload, Uninstall et Audit depuis l'interface
+- conserver des workflows manuels securises pour les actions WAPT interactives
+- garder une tracabilite locale via historique, logs, rapports et sauvegardes
 
-- [WaptStudio.sln](WaptStudio.sln)
-- [WaptStudio.App/WaptStudio.App.csproj](WaptStudio.App/WaptStudio.App.csproj)
-- [WaptStudio.Core/WaptStudio.Core.csproj](WaptStudio.Core/WaptStudio.Core.csproj)
-- [WaptStudio.Tests/WaptStudio.Tests.csproj](WaptStudio.Tests/WaptStudio.Tests.csproj)
-- [Start-WaptStudio.ps1](Start-WaptStudio.ps1)
-- [Build-Release.ps1](Build-Release.ps1)
+## Architecture
 
-## Architecture actuelle
+La solution conserve l'architecture existante et la clarifie.
 
-### Application WinForms
+- [WaptStudio.App/WaptStudio.App.csproj](WaptStudio.App/WaptStudio.App.csproj): interface WinForms
+- [WaptStudio.Core/WaptStudio.Core.csproj](WaptStudio.Core/WaptStudio.Core.csproj): logique metier, services WAPT, historique, sauvegardes
+- [WaptStudio.Tests/WaptStudio.Tests.csproj](WaptStudio.Tests/WaptStudio.Tests.csproj): tests unitaires et tests de regression
 
-- [WaptStudio.App/Program.cs](WaptStudio.App/Program.cs): point d'entree, gestion globale des exceptions
-- [WaptStudio.App/Bootstrap/AppRuntime.cs](WaptStudio.App/Bootstrap/AppRuntime.cs): composition des services
-- [WaptStudio.App/Forms/MainForm.cs](WaptStudio.App/Forms/MainForm.cs): ecran principal
-- [WaptStudio.App/Forms/SettingsForm.cs](WaptStudio.App/Forms/SettingsForm.cs): configuration locale
-- [WaptStudio.App/Forms/HistoryDetailsForm.cs](WaptStudio.App/Forms/HistoryDetailsForm.cs): consultation detaillee d'une entree d'historique
+Services metier principaux:
 
-### Couche metier
+- [WaptStudio.Core/Services/PackageCatalogService.cs](WaptStudio.Core/Services/PackageCatalogService.cs): scan du catalogue CD48
+- [WaptStudio.Core/Services/PackageClassificationService.cs](WaptStudio.Core/Services/PackageClassificationService.cs): classification MSI / EXE / AUTRES
+- [WaptStudio.Core/Services/PackageInspectorService.cs](WaptStudio.Core/Services/PackageInspectorService.cs): analyse detaillee d'un paquet
+- [WaptStudio.Core/Services/PackageUpdateService.cs](WaptStudio.Core/Services/PackageUpdateService.cs): plan de synchronisation et remplacement d'installateur
+- [WaptStudio.Core/Services/PackageValidationService.cs](WaptStudio.Core/Services/PackageValidationService.cs): readiness metier
+- [WaptStudio.Core/Services/BackupRestoreService.cs](WaptStudio.Core/Services/BackupRestoreService.cs): sauvegarde et restauration
+- [WaptStudio.Core/Services/WaptCommandService.cs](WaptStudio.Core/Services/WaptCommandService.cs): build, sign, upload, audit et uninstall via WAPT
+- [WaptStudio.Core/Services/HistoryService.cs](WaptStudio.Core/Services/HistoryService.cs): historique SQLite local
 
-- [WaptStudio.Core/Configuration/AppPaths.cs](WaptStudio.Core/Configuration/AppPaths.cs): chemins locaux
-- [WaptStudio.Core/Models/AppSettings.cs](WaptStudio.Core/Models/AppSettings.cs): configuration persistante
-- [WaptStudio.Core/Models/PackageInfo.cs](WaptStudio.Core/Models/PackageInfo.cs): informations de paquet detectees
-- [WaptStudio.Core/Models/ValidationResult.cs](WaptStudio.Core/Models/ValidationResult.cs): resultat de validation metier
-- [WaptStudio.Core/Models/CommandExecutionResult.cs](WaptStudio.Core/Models/CommandExecutionResult.cs): resultat complet d'execution systeme
-- [WaptStudio.Core/Models/HistoryEntry.cs](WaptStudio.Core/Models/HistoryEntry.cs): entree d'historique enrichie
-- [WaptStudio.Core/Services/SettingsService.cs](WaptStudio.Core/Services/SettingsService.cs): persistance JSON
-- [WaptStudio.Core/Services/LogService.cs](WaptStudio.Core/Services/LogService.cs): logs applicatifs
-- [WaptStudio.Core/Services/HistoryService.cs](WaptStudio.Core/Services/HistoryService.cs): SQLite locale
-- [WaptStudio.Core/Services/CommandExecutionService.cs](WaptStudio.Core/Services/CommandExecutionService.cs): execution systeme avec timeout et capture stdout/stderr
-- [WaptStudio.Core/Services/PackageInspectorService.cs](WaptStudio.Core/Services/PackageInspectorService.cs): analyse d'un dossier paquet
-- [WaptStudio.Core/Services/PackageUpdateService.cs](WaptStudio.Core/Services/PackageUpdateService.cs): remplacement MSI/EXE et mise a jour de references
-- [WaptStudio.Core/Services/PackageValidationService.cs](WaptStudio.Core/Services/PackageValidationService.cs): validation metier consolidee
-- [WaptStudio.Core/Services/WaptCommandService.cs](WaptStudio.Core/Services/WaptCommandService.cs): commandes WAPT construites depuis la configuration
+## Interface finale
 
-### Tests unitaires
+L'ecran principal est organise autour de cinq zones utiles:
 
-- [WaptStudio.Tests/PackageInspectorServiceTests.cs](WaptStudio.Tests/PackageInspectorServiceTests.cs)
-- [WaptStudio.Tests/PackageUpdateServiceTests.cs](WaptStudio.Tests/PackageUpdateServiceTests.cs)
-- [WaptStudio.Tests/PackageValidationServiceTests.cs](WaptStudio.Tests/PackageValidationServiceTests.cs)
+- inventaire des paquets CD48
+- detail du paquet selectionne
+- verdict readiness
+- journal d'execution
+- historique local
 
-## Fonctionnalites actuellement implementees
+L'interface est refondue en style WinForms moderne sobre:
 
-### MainForm
+- cartes et sections separees
+- hierarchie visuelle claire
+- badges de readiness
+- couleurs d'etat vert / orange / rouge / bleu-gris
+- boutons d'action plus lisibles
+- micro-animation discrete sur la grille pour eviter un rendu trop plat
 
-L'ecran principal permet de:
+## Inventaire des paquets CD48
 
-- selectionner un dossier de paquet
-- afficher le paquet courant, la version detectee, l'installeur principal, les chemins importants et les installateurs trouves
-- afficher le statut WAPT disponible, indisponible ou dry-run
-- afficher le dernier resultat d'action
-- analyser le paquet
-- remplacer un MSI ou EXE
-- lancer une validation metier + validation WAPT
-- lancer build, sign et upload via `WaptCommandService`
-- tester WAPT
-- ouvrir le dossier paquet
-- ouvrir le dossier de logs
-- sauvegarder un rapport texte
-- consulter l'historique et ouvrir le detail d'une entree
+Depuis l'ecran principal, WaptStudio permet de:
 
-### SettingsForm
+- choisir un dossier racine configurable
+- scanner en mode recursif complet ou semi-recursif avec profondeur definie
+- detecter automatiquement les dossiers de paquets WAPT
+- afficher une grille inventaire avec:
+  - package id
+  - nom visible
+  - version
+  - categorie MSI / EXE / AUTRES
+  - maturite
+  - readiness
+  - date de derniere modification
+  - chemin du dossier
+- rechercher par texte
+- filtrer par categorie
+- trier par colonnes
+- selectionner un paquet pour voir son detail
 
-La configuration locale permet de definir:
+La categorisation metier suit les regles suivantes:
 
-- chemin vers `wapt-get.exe`
-- timeout global
-- arguments de verification WAPT
-- arguments de validation
-- arguments de build
-- arguments de sign
-- arguments d'upload
-- mode dry-run
-- activation des backups
-- activation signature/upload
-- option overwrite pour upload
-- dossier de logs
-- dossier de backups
-- chemin de cle de signature
-- cible d'upload
-- dossier paquet par defaut
+- MSI si `install_msi_if_needed(...)` est detecte ou si l'installateur principal est un `.msi`
+- EXE si `install_exe_if_needed(...)` est detecte ou si l'installateur principal est un `.exe`
+- AUTRES si aucun signal fiable n'est disponible
 
-## Configuration locale et donnees
+## Remplacement d'installateur
 
-Au premier lancement, l'application cree un espace local sous `%LOCALAPPDATA%\WaptStudio`.
+Le remplacement MSI/EXE suit un flux robuste:
 
-Par defaut:
+1. selection du nouveau MSI ou EXE
+2. detection du type cible
+3. identification de l'ancien installateur principal
+4. generation d'un plan de synchronisation
+5. affichage d'une previsualisation avant application
+6. sauvegarde automatique du paquet
+7. application du remplacement
+8. suppression de l'ancien installateur principal si le nouveau est applique
 
-- configuration: `%LOCALAPPDATA%\WaptStudio\config\appsettings.json`
-- base SQLite: `%LOCALAPPDATA%\WaptStudio\data\history.db`
-- logs: `%LOCALAPPDATA%\WaptStudio\logs`
-- backups: `%LOCALAPPDATA%\WaptStudio\backups`
+Garanties apportees:
 
-Ces dossiers logs et backups peuvent ensuite etre rediriges dans l'interface de configuration.
+- aucune suppression sans sauvegarde prealable
+- pas de remplacement partiel silencieux
+- le package id reste conserve
+- la version cible est deduite du nouveau fichier si possible
+- sinon la version existante est explicitement conservee
 
-## Historique et logs
+## Synchronisation complete du paquet
 
-Chaque action significative peut enregistrer:
+Apres remplacement, WaptStudio synchronise les elements juges fiables:
 
-- date
-- action
-- paquet
-- statut
-- duree
-- commande executee
-- stdout
-- stderr
-- utilisateur Windows
-- version avant/apres si disponible
+- `setup.py`
+- `WAPT/control` ou `control`
+- version
+- name
+- description
+- description_fr
+- nom attendu du `.wapt`
+- nom du dossier racine quand le renommage est clairement derivable de l'ancienne version
 
-L'historique detaille est consultable depuis l'interface.
+Le moteur limite volontairement les remplacements pour rester sur des motifs connus et securises:
 
-## Validation metier actuelle
+- `install_msi_if_needed(...)`
+- `install_exe_if_needed(...)`
+- `print(...)`
+- references d'installateur reconnues
+- champs standards du control
 
-Le service de validation verifie au minimum:
+Les remplacements arbitraires dangereux ne sont pas faits.
 
-- dossier accessible
+## Previsualisation avant application
+
+La fenetre de previsualisation affiche:
+
+- ancien installateur -> nouveau installateur
+- ancien type -> nouveau type
+- ancienne version -> nouvelle version
+- ancien name -> nouveau name
+- ancienne description -> nouvelle description
+- ancien dossier -> nouveau dossier attendu
+- nom attendu du `.wapt`
+- fichiers supprimes
+- fichiers modifies
+- avertissements
+- information de sauvegarde
+
+L'utilisateur peut confirmer ou annuler avant toute modification.
+
+## Readiness metier
+
+WaptStudio calcule un verdict unique parmi:
+
+- `PRET POUR BUILD / UPLOAD`
+- `PRET AVEC AVERTISSEMENTS`
+- `BLOQUE`
+
+Le detail readiness explique pourquoi le paquet est dans cet etat.
+
+Verifications principales:
+
 - presence de `setup.py`
-- presence de `control`
-- presence d'au moins un MSI/EXE
-- coherence entre installeur reference et fichiers detectes si une reference est trouvee
-- detection du nom et de la version
-- configuration/disponibilite WAPT
-- accessibilite du dossier de backup
-- possibilite d'ecriture dans le dossier paquet
-- tentative de validation WAPT via la configuration courante
+- presence du fichier `control`
+- presence de l'installateur principal
+- coherence entre installateur detecte et installateur reference
+- coherence version / name / descriptions
+- accessibilite du dossier paquet
+- possibilite d'ecriture
+- possibilite de sauvegarde
+- disponibilite WAPT
+- build possible
+- upload possible selon la configuration
+- audit possible
+- uninstall possible
+- presence d'installateurs residuels supplementaires
 
-Les severites renvoyees sont:
+Le readiness complet peut inclure ou non la verification WAPT detaillee selon le contexte:
 
-- `OK`
-- `WARNING`
-- `ERROR`
+- scan inventaire: readiness rapide sans lancer la validation WAPT lourde
+- validation utilisateur: readiness complet avec validation WAPT si souhaitee
 
-## Commandes WAPT configurables
+## Actions disponibles dans l'interface
+
+Actions metier exposees:
+
+- `Analyser`
+- `Remplacer MSI/EXE`
+- `Valider readiness`
+- `Build`
+- `Sign`
+- `Upload`
+- `Build + Upload`
+- `Audit`
+- `Uninstall`
+- `Restaurer derniere sauvegarde`
+- `Workflow manuel`
+- `Exporter rapport`
+
+Messages utilisateur utilises:
+
+- succes reel
+- succes simule
+- action manuelle requise
+- action bloquee
+- erreur reelle
+
+Le produit n'affiche pas de faux succes.
+
+## Build, Upload, Audit et Uninstall via WAPT
 
 Toutes les commandes WAPT passent par [WaptStudio.Core/Services/WaptCommandService.cs](WaptStudio.Core/Services/WaptCommandService.cs).
 
-Methodes principales:
+Commandes prises en charge:
 
-- `CheckWaptAvailabilityAsync()`
-- `ValidatePackageWithWaptAsync(...)`
-- `BuildPackageAsync(...)`
-- `SignPackageAsync(...)`
-- `UploadPackageAsync(...)`
+- verification WAPT
+- validation de paquet
+- build
+- sign
+- upload
+- audit
+- uninstall
 
-Les arguments proviennent exclusivement de la configuration locale. L'UI ne construit pas elle-meme de commande WAPT.
-
-Placeholders supportes dans les templates d'arguments:
+Placeholders disponibles dans les templates:
 
 - `{packageFolder}`
+- `{waptFilePath}`
+- `{packageId}`
 - `{signingKeyPath}`
 - `{uploadRepositoryUrl}`
 - `{repositoryOption}`
 - `{overwriteFlag}`
 
-## Dry-run
-
-Quand le mode dry-run est active:
-
-- WaptStudio construit la commande finale
-- la commande est affichee dans les logs et historisee
-- aucune execution reelle n'est lancee
-- le resultat remonte explicitement comme une simulation reussie dans l'UI et l'historique
-
-Ce mode est recommande pour verifier les templates de commande avant tout test reel.
-
-## Workflows interactifs assistes
-
-En mode reel, WaptStudio peut maintenant ouvrir un dialogue de secrets temporaires juste avant l'action:
-
-- `Build`: mot de passe certificat
-- `Sign`: mot de passe certificat
-- `Upload`: `Admin User` + `Password`
-- `Build + Upload`: mot de passe certificat + identifiants admin dans un seul dialogue
-
-Bonnes pratiques appliquees:
-
-- aucun secret n'est enregistre dans `AppSettings`
-- aucun secret n'est ecrit dans SQLite, les logs, le rapport exporte ou l'historique
-- les secrets restent uniquement en memoire pendant l'action courante
-- les commandes affichees dans l'UI et l'historique ne contiennent jamais les secrets
-
-Limite technique assumee:
-
-- WaptStudio tente une execution assistee via `stdin` quand cela est raisonnable
-- si `wapt-get` refuse l'automatisation non interactive ou echoue de facon non fiable, WaptStudio bascule vers un workflow manuel assiste
-- ce fallback manuel reste disponible pour `Build`, `Sign` et `Upload`
-
-Workflow manuel assiste:
-
-- affichage de la commande preparee sans secret
-- bouton de copie de commande
-- bouton `Ouvrir PowerShell ici`
-- confirmation manuelle ensuite dans l'historique
-
-## Prerequis
-
-1. Windows
-2. SDK .NET 10 installe et accessible via `dotnet`
-3. Outils WAPT installes localement si vous voulez tester les commandes reelles
-4. Droits d'ecriture sur le dossier du paquet et sur les repertoires locaux WaptStudio
-
-## Verification prealable .NET
-
-Avant toute compilation reelle, verifier l'environnement:
-
-```powershell
-dotnet --info
-dotnet --version
-```
-
-## Lancement en developpement
-
-Depuis PowerShell a la racine du depot:
-
-```powershell
-.\Start-WaptStudio.ps1
-```
-
-Ce script:
-
-1. verifie la presence de `dotnet`
-2. affiche la version du SDK detecte
-3. lance `dotnet run` sur le projet WinForms
-
-## Build, test et run en ligne de commande
-
-Depuis PowerShell a la racine du depot:
-
-```powershell
-dotnet restore .\WaptStudio.sln
-dotnet build .\WaptStudio.sln -c Release
-dotnet test .\WaptStudio.sln -c Release
-dotnet run --project .\WaptStudio.App\WaptStudio.App.csproj --framework net10.0-windows
-```
-
-## Build Release
-
-Depuis PowerShell a la racine du depot:
-
-```powershell
-.\Build-Release.ps1
-```
-
-Ce script:
-
-1. verifie la presence de `dotnet`
-2. restaure la solution
-3. compile en `Release`
-4. execute les tests
-5. publie l'application dans `dist\publish`
-6. copie `README.md`, `Start-WaptStudio.ps1` et `Build-Release.ps1` dans `dist\`
-
-## Premier parametrage WAPT
-
-Dans WaptStudio:
-
-1. ouvrir `Parametres`
-2. renseigner le chemin reel de `wapt-get.exe`
-3. verifier les templates d'arguments WAPT
-4. activer `dry-run`
-5. choisir un dossier de logs si necessaire
-6. choisir un dossier de backups si necessaire
-7. enregistrer
-
-Exemple prudent de templates initiaux:
+Templates par defaut utiles:
 
 - test WAPT: `--version`
 - validation: `show {packageFolder}`
 - build: `build-package {packageFolder}`
 - sign: `sign-package {packageFolder}`
 - upload: `upload-package {waptFilePath}`
+- audit: `audit {packageId}`
+- uninstall: `remove {packageId}`
 
-Ces templates doivent etre confirmes sur votre version reelle de WAPT.
+## Workflows interactifs securises
 
-Pour la signature locale, WaptStudio attend un fichier `.p12` ou `.pem`. Un fichier `.crt` seul est refuse car il ne suffit pas pour le workflow de signature interactive pris en charge par cette V1.
+Pour les actions interactives, WaptStudio conserve les workflows deja introduits:
 
-Pour l'upload, WaptStudio n'exige plus de repository si la commande standard `upload-package {waptFilePath}` suffit dans votre environnement WAPT.
+- prompt temporaire de mot de passe certificat pour `Build` et `Sign`
+- prompt temporaire de login/mot de passe admin pour `Upload`
+- prompt combine pour `Build + Upload`
 
-Au demarrage, l'application journalise aussi:
+Garanties securite:
 
-- la version applicative
-- le chemin WAPT configure
-- l'etat du chemin WAPT configure
-- le chemin des logs
-- le chemin des backups
-- l'etat de la base SQLite locale
+- aucun secret n'est persiste dans `AppSettings`
+- aucun secret n'est stocke dans SQLite
+- aucun secret n'est ecrit dans les logs ou le rapport exporte
+- les sorties sont nettoyees via redaction
+- les secrets sont gardes uniquement en memoire pendant l'action puis effaces
 
-Le bouton `Diagnostic environnement` affiche un rapport detaille avec ces informations.
+Si `wapt-get` ne supporte pas une automatisation non interactive fiable:
 
-## Premier test reel avec un paquet WAPT
+- WaptStudio prepare un workflow manuel assiste
+- la commande est affichee sans secret
+- l'utilisateur peut ouvrir un PowerShell dans le dossier du paquet
+- le resultat manuel est rattache a l'historique
 
-1. executer `dotnet --info`
-2. compiler avec `dotnet build .\WaptStudio.sln -c Release`
-3. verifier les tests avec `dotnet test .\WaptStudio.sln -c Release`
-4. lancer l'application avec `.\Start-WaptStudio.ps1` ou `dotnet run --project .\WaptStudio.App\WaptStudio.App.csproj --framework net10.0-windows`
-5. ouvrir `Parametres`
-6. renseigner le chemin WAPT reel
-7. laisser `dry-run` active pour commencer
-8. enregistrer
-9. cliquer sur `Diagnostic environnement`
-10. verifier la version application, le chemin WAPT, l'existence du chemin WAPT, les dossiers logs/backups, SQLite et l'utilisateur Windows
-11. cliquer sur `Tester WAPT`
-12. selectionner un vrai dossier de paquet WAPT
-13. cliquer sur `Analyser`
-14. verifier les chemins, la version, les installateurs detectes et l'installeur reference
-15. cliquer sur `Valider`
-16. consulter les `OK`, `WARNING` et `ERROR`
-17. si tout est coherent, tester `Construire`, `Signer`, `Uploader` ou `Build + Upload` en dry-run
-18. verifier que les commandes sont affichees dans les logs et historisees sans execution reelle
-19. desactiver ensuite le dry-run uniquement pour un test reel controle
-20. pour `Construire` ou `Signer`, saisir le mot de passe certificat dans le dialogue temporaire quand WaptStudio le demande
-21. pour `Uploader`, saisir `Admin User` et `Password` dans le dialogue temporaire quand WaptStudio le demande
-22. si l'execution assistee reussit, verifier l'entree `BuildInteractiveExecuted`, `SignInteractiveExecuted` ou `UploadInteractiveExecuted`
-23. si l'execution assistee n'est pas fiable, utiliser la fenetre de workflow manuel proposee par WaptStudio
-24. cliquer sur `Copier la commande` si besoin
-25. cliquer sur `Ouvrir PowerShell ici`
-26. lancer la commande dans le terminal ouvert
-27. saisir les secrets uniquement quand WAPT les demande dans le terminal
-28. verifier que le paquet `.wapt` est genere ou uploadé selon l'action
-29. revenir dans WaptStudio
-30. selectionner le `.wapt` associe si vous voulez tracer le chemin exact
-31. cliquer sur `Marquer comme operation manuelle reussie`
-32. verifier dans l'historique les distinctions `BuildDryRun`, `BuildManualPrepared`, `BuildManualConfirmed`, `BuildInteractiveExecuted`, `SignDryRun`, `SignManualPrepared`, `SignManualConfirmed`, `SignInteractiveExecuted`, `UploadDryRun`, `UploadInteractiveExecuted`, `UploadManualPrepared`, `UploadManualConfirmed`
+## Sauvegardes et restauration
 
-## Lecture des logs
+Avant un remplacement d'installateur, WaptStudio cree une sauvegarde du paquet.
 
-- logs applicatifs: dossier configure dans les parametres, sinon `%LOCALAPPDATA%\WaptStudio\logs`
-- log en direct: visible dans l'ecran principal
-- historique technique: visible dans la grille, avec detail consultable
-- rapport: exportable via le bouton `Sauvegarder rapport`
+Le systeme fournit:
 
-## Cohabitation avec les vraies commandes WAPT
+- sauvegarde automatique avant modification
+- stockage structure par paquet
+- manifeste JSON de sauvegarde
+- bouton pour ouvrir le dossier des sauvegardes
+- restauration de la derniere sauvegarde du paquet selectionne
+- resume des fichiers restaures
 
-Approche recommande pour limiter les risques:
+## Historique et rapports
 
-1. commencer par `Tester WAPT`
-2. garder `dry-run` active tant que les templates ne sont pas valides
-3. verifier les backups
-4. tester sur un paquet de preproduction
-5. n'activer `Uploader` que lorsque le repository cible est confirme
+L'historique SQLite enregistre notamment:
 
-## TODO restants clairement assumes
+- action
+- paquet
+- date
+- statut
+- duree
+- message
+- chemin du paquet
+- chemin du `.wapt` si pertinent
+- verdict readiness si pertinent
+- version avant / apres
 
-- confirmer la syntaxe exacte des commandes WAPT sur la version reelle de votre poste
-- confirmer les options de signature attendues par votre outillage WAPT
-- confirmer les options d'upload et l'eventuelle authentification associee
-- verifier le comportement exact de `show` ou de la commande de validation la plus adaptee a votre distribution WAPT
+Le rapport exporte depuis l'interface contient:
 
-## Notes de verification
+- etat du paquet selectionne
+- verdict readiness
+- logs recents
+- actions recentes
+- informations utiles pour decider du build ou de l'upload
 
-- la consolidation a ete faite en conservant l'architecture existante
-- les forms n'executent pas de commande WAPT en direct
-- les scripts et la documentation ci-dessus correspondent au code consolide actuel
-- dans l'environnement de generation initial, `dotnet` n'etait pas disponible, donc la verification de compilation reelle doit etre faite sur une machine Windows equipee du SDK .NET 10
+## Configuration locale
+
+Au premier lancement, l'application cree un espace local sous `%LOCALAPPDATA%\WaptStudio`.
+
+Par defaut:
+
+- configuration JSON: `%LOCALAPPDATA%\WaptStudio\config\appsettings.json`
+- historique SQLite: `%LOCALAPPDATA%\WaptStudio\data\history.db`
+- logs: `%LOCALAPPDATA%\WaptStudio\logs`
+- backups: `%LOCALAPPDATA%\WaptStudio\backups`
+
+La configuration permet notamment de definir:
+
+- racine catalogue CD48
+- mode de scan recursif ou semi-recursif
+- chemin de `wapt-get.exe`
+- timeout global
+- dry-run
+- chemins logs et backups
+- templates build / sign / upload / audit / uninstall
+- cle de signature
+
+## Tests couverts
+
+La suite de tests couvre les points critiques suivants:
+
+- classification MSI / EXE / AUTRES
+- scan de catalogue CD48
+- remplacement d'installateur
+- suppression de l'ancien installateur
+- synchronisation control
+- synchronisation setup.py
+- renommage du dossier paquet
+- readiness metier
+- plan de synchronisation et previsualisation
+- upload sans repository obligatoire si non requis
+- workflows manuels et assistes Build / Sign / Upload
+- non-persistance des secrets
+- sauvegarde et restauration
+
+Validation actuelle:
+
+- build Release: OK
+- tests Release: 25/25 OK
+
+## Bonnes pratiques d'usage
+
+Approche recommandee:
+
+1. configurer la racine CD48 et les templates WAPT reels
+2. commencer avec le `dry-run` active
+3. scanner le catalogue puis filtrer les paquets cibles
+4. verifier le readiness avant tout remplacement
+5. controler la previsualisation avant application
+6. verifier la sauvegarde creee avant un remplacement reel
+7. ne passer en execution reelle qu'une fois le readiness compris
+
+## Limites connues
+
+- la fiabilite exacte de `Build`, `Sign`, `Upload`, `Audit` et `Uninstall` depend de votre version reelle de WAPT et de ses arguments locaux
+- le renommage du dossier paquet n'est applique que quand il peut etre deduit de maniere suffisamment fiable
+- la synchronisation de textes reste volontairement prudente et ne tente pas de remplacements generiques non maitrises
+- `Audit` et `Uninstall` reposent sur la commande configuree et sur le `packageId` detecte; il faut confirmer les templates adaptes a votre environnement
+- l'UI reste WinForms: le rendu est modernise, mais sans moteur graphique externe ni theming avance
+
+## Commandes utiles
+
+Depuis PowerShell a la racine du depot:
+
+```powershell
+dotnet build .\WaptStudio.sln
+dotnet test .\WaptStudio.sln
+dotnet run --project .\WaptStudio.App\WaptStudio.App.csproj
+```

@@ -11,6 +11,18 @@ namespace WaptStudio.Core.Services;
 
 public sealed partial class PackageInspectorService : IPackageInspectorService
 {
+    private readonly IPackageClassificationService _packageClassificationService;
+
+    public PackageInspectorService()
+        : this(new PackageClassificationService())
+    {
+    }
+
+    public PackageInspectorService(IPackageClassificationService packageClassificationService)
+    {
+        _packageClassificationService = packageClassificationService;
+    }
+
     public async Task<PackageInfo> AnalyzePackageAsync(string packageFolder, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(packageFolder))
@@ -36,15 +48,7 @@ public sealed partial class PackageInspectorService : IPackageInspectorService
 
         packageInfo.DetectedExecutables.AddRange(executables);
 
-        if (executables.Count > 0)
-        {
-            packageInfo.InstallerPath = executables[0];
-            packageInfo.InstallerType = Path.GetExtension(executables[0]).TrimStart('.').ToUpperInvariant();
-        }
-        else
-        {
-            packageInfo.Warnings.Add("Aucun fichier MSI ou EXE n'a ete detecte.");
-        }
+        string? setupPyContent = null;
 
         if (packageInfo.ControlFilePath is not null)
         {
@@ -59,24 +63,20 @@ public sealed partial class PackageInspectorService : IPackageInspectorService
 
         if (packageInfo.SetupPyPath is not null)
         {
-            var setupPyContent = await File.ReadAllTextAsync(packageInfo.SetupPyPath, cancellationToken).ConfigureAwait(false);
+            setupPyContent = await File.ReadAllTextAsync(packageInfo.SetupPyPath, cancellationToken).ConfigureAwait(false);
             packageInfo.PackageName ??= ExtractSetupPyValue(setupPyContent, "package");
             packageInfo.Version ??= ExtractSetupPyValue(setupPyContent, "version");
             packageInfo.ReferencedInstallerName ??= ExtractSetupPyValue(setupPyContent, "installer") ?? ExtractReferencedInstallerFromSetupPy(setupPyContent);
+        }
 
-            if (packageInfo.InstallerPath is null)
-            {
-                var referencedInstaller = packageInfo.ReferencedInstallerName;
-                if (!string.IsNullOrWhiteSpace(referencedInstaller))
-                {
-                    var candidatePath = Path.Combine(packageFolder, referencedInstaller);
-                    if (File.Exists(candidatePath))
-                    {
-                        packageInfo.InstallerPath = candidatePath;
-                        packageInfo.InstallerType = Path.GetExtension(candidatePath).TrimStart('.').ToUpperInvariant();
-                    }
-                }
-            }
+        packageInfo.InstallerPath = ResolvePrimaryInstallerPath(packageFolder, executables, packageInfo.ReferencedInstallerName);
+        if (packageInfo.InstallerPath is not null)
+        {
+            packageInfo.InstallerType = Path.GetExtension(packageInfo.InstallerPath).TrimStart('.').ToUpperInvariant();
+        }
+        else
+        {
+            packageInfo.Warnings.Add("Aucun fichier MSI ou EXE n'a ete detecte.");
         }
 
         if (packageInfo.SetupPyPath is null)
@@ -95,7 +95,37 @@ public sealed partial class PackageInspectorService : IPackageInspectorService
             packageInfo.Warnings.Add($"Installeur reference non trouve: {packageInfo.ReferencedInstallerName}");
         }
 
+        packageInfo.Category = _packageClassificationService.Classify(packageInfo, setupPyContent);
+        packageInfo.Maturity = _packageClassificationService.DetectMaturity(packageFolder, packageInfo.PackageName);
+        packageInfo.LastModifiedUtc = Directory.EnumerateFiles(packageFolder, "*", SearchOption.AllDirectories)
+            .Select(File.GetLastWriteTimeUtc)
+            .DefaultIfEmpty(Directory.GetLastWriteTimeUtc(packageFolder))
+            .Max();
+        packageInfo.ExpectedWaptFileName = string.IsNullOrWhiteSpace(packageInfo.PackageName) || string.IsNullOrWhiteSpace(packageInfo.Version)
+            ? null
+            : $"{packageInfo.PackageName}_{packageInfo.Version}.wapt";
+
         return packageInfo;
+    }
+
+    private static string? ResolvePrimaryInstallerPath(string packageFolder, System.Collections.Generic.IReadOnlyList<string> executables, string? referencedInstallerName)
+    {
+        if (!string.IsNullOrWhiteSpace(referencedInstallerName))
+        {
+            var referencedMatch = executables.FirstOrDefault(path => string.Equals(Path.GetFileName(path), referencedInstallerName, StringComparison.OrdinalIgnoreCase));
+            if (!string.IsNullOrWhiteSpace(referencedMatch))
+            {
+                return referencedMatch;
+            }
+
+            var candidatePath = Path.Combine(packageFolder, referencedInstallerName);
+            if (File.Exists(candidatePath))
+            {
+                return candidatePath;
+            }
+        }
+
+        return executables.Count > 0 ? executables[0] : null;
     }
 
     private static string? FindFile(string packageFolder, string fileName)

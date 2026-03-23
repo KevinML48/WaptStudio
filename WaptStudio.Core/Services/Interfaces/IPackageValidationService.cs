@@ -6,5 +6,5 @@ namespace WaptStudio.Core.Services.Interfaces;
 
 public interface IPackageValidationService
 {
-    Task<ValidationResult> ValidateAsync(string packageFolder, PackageInfo? packageInfo = null, CancellationToken cancellationToken = default);
+    Task<ValidationResult> ValidateAsync(string packageFolder, PackageInfo? packageInfo = null, bool includeWaptValidation = true, CancellationToken cancellationToken = default);
 }

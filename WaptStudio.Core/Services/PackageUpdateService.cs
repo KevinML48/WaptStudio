@@ -14,11 +14,13 @@ public sealed class PackageUpdateService : IPackageUpdateService
 {
     private readonly IPackageInspectorService _packageInspectorService;
     private readonly ISettingsService _settingsService;
+    private readonly IBackupRestoreService _backupRestoreService;
 
-    public PackageUpdateService(IPackageInspectorService packageInspectorService, ISettingsService settingsService)
+    public PackageUpdateService(IPackageInspectorService packageInspectorService, ISettingsService settingsService, IBackupRestoreService backupRestoreService)
     {
         _packageInspectorService = packageInspectorService;
         _settingsService = settingsService;
+        _backupRestoreService = backupRestoreService;
     }
 
     public async Task<PackageUpdateResult> ReplaceInstallerAsync(
@@ -37,30 +39,10 @@ public sealed class PackageUpdateService : IPackageUpdateService
         }
 
         AppPaths.EnsureCreated(settings);
-
-        var backupDirectory = settings.CreateBackups
-            ? Path.Combine(AppPaths.ResolveBackupsDirectory(settings), DateTime.Now.ToString("yyyyMMdd-HHmmss"))
-            : null;
-
-        if (backupDirectory is not null)
-        {
-            Directory.CreateDirectory(backupDirectory);
-        }
-
-        if (packageInfo.InstallerPath is not null && File.Exists(packageInfo.InstallerPath) && backupDirectory is not null)
-        {
-            File.Copy(packageInfo.InstallerPath, Path.Combine(backupDirectory, Path.GetFileName(packageInfo.InstallerPath)), overwrite: true);
-        }
-
-        if (packageInfo.SetupPyPath is not null && File.Exists(packageInfo.SetupPyPath) && backupDirectory is not null)
-        {
-            File.Copy(packageInfo.SetupPyPath, Path.Combine(backupDirectory, Path.GetFileName(packageInfo.SetupPyPath)), overwrite: true);
-        }
-
-        if (packageInfo.ControlFilePath is not null && File.Exists(packageInfo.ControlFilePath) && backupDirectory is not null)
-        {
-            File.Copy(packageInfo.ControlFilePath, Path.Combine(backupDirectory, Path.GetFileName(packageInfo.ControlFilePath)), overwrite: true);
-        }
+        var backup = await _backupRestoreService.CreatePackageBackupAsync(packageInfo, "replace-installer", cancellationToken).ConfigureAwait(false);
+        var backupDirectory = backup.BackupDirectory;
+        synchronizationPlan.BackupWillBeCreated = true;
+        synchronizationPlan.BackupDirectory = backupDirectory;
 
         var packageInstallerDirectory = packageInfo.InstallerPath is null
             ? packageInfo.PackageFolder
@@ -77,15 +59,6 @@ public sealed class PackageUpdateService : IPackageUpdateService
             && !string.Equals(Path.GetFullPath(packageInfo.InstallerPath), Path.GetFullPath(destinationInstallerPath), StringComparison.OrdinalIgnoreCase)
             && File.Exists(packageInfo.InstallerPath))
         {
-            var replacedBackupPath = backupDirectory is null
-                ? Path.Combine(packageInstallerDirectory, Path.GetFileName(packageInfo.InstallerPath) + ".bak")
-                : Path.Combine(backupDirectory, Path.GetFileName(packageInfo.InstallerPath));
-
-            if (!File.Exists(replacedBackupPath))
-            {
-                File.Copy(packageInfo.InstallerPath, replacedBackupPath, overwrite: true);
-            }
-
             File.Delete(packageInfo.InstallerPath);
         }
 
@@ -344,6 +317,8 @@ public sealed class PackageUpdateService : IPackageUpdateService
             TargetVersion = targetVersion,
             CurrentInstallerName = currentInstallerName,
             TargetInstallerName = targetInstallerName,
+            CurrentInstallerType = packageInfo.InstallerType,
+            TargetInstallerType = Path.GetExtension(targetInstallerName).TrimStart('.').ToUpperInvariant(),
             CurrentVisibleName = packageInfo.VisibleName,
             TargetVisibleName = targetVisibleName,
             CurrentDescription = packageInfo.Description,
@@ -355,17 +330,26 @@ public sealed class PackageUpdateService : IPackageUpdateService
             PackageFolderRenamePlanned = renamePlanned,
             PackageFolderRenamePossible = renamePossible,
             ExpectedWaptFileName = BuildExpectedWaptFileName(packageId, targetVersion),
-            ExpectedWaptFileNameNote = "Nom calcule a partir du package id conserve et de la version cible."
+            ExpectedWaptFileNameNote = "Nom calcule a partir du package id conserve et de la version cible.",
+            BackupWillBeCreated = true
         };
 
         AddChangeSummary(plan.SummaryLines, "Package", packageId, packageId);
         AddChangeSummary(plan.SummaryLines, "Version", plan.CurrentVersion, plan.TargetVersion);
+        AddChangeSummary(plan.SummaryLines, "Type", plan.CurrentInstallerType, plan.TargetInstallerType);
         AddChangeSummary(plan.SummaryLines, "MSI/EXE", plan.CurrentInstallerName, plan.TargetInstallerName);
         AddChangeSummary(plan.SummaryLines, "Nom", plan.CurrentVisibleName, plan.TargetVisibleName);
         AddChangeSummary(plan.SummaryLines, "Description", plan.CurrentDescription, plan.TargetDescription);
         AddChangeSummary(plan.SummaryLines, "Description FR", plan.CurrentDescriptionFr, plan.TargetDescriptionFr);
         AddChangeSummary(plan.SummaryLines, "Dossier", plan.CurrentPackageFolder, plan.TargetPackageFolder);
         AddChangeSummary(plan.SummaryLines, ".wapt attendu", null, plan.ExpectedWaptFileName);
+        if (!string.IsNullOrWhiteSpace(plan.CurrentInstallerName))
+        {
+            plan.FilesDeleted.Add(plan.CurrentInstallerName);
+        }
+
+        plan.FilesModified.Add("setup.py");
+        plan.FilesModified.Add("control");
 
         if (string.IsNullOrWhiteSpace(targetVersion))
         {

@@ -2,6 +2,12 @@ namespace WaptStudio.Core.Models;
 
 public sealed class AppSettings
 {
+    public string? CatalogRootFolder { get; set; }
+
+    public bool CatalogScanRecursively { get; set; } = true;
+
+    public int CatalogSemiRecursiveDepth { get; set; } = 2;
+
     public string WaptExecutablePath { get; set; } = "wapt-get.exe";
 
     public int CommandTimeoutSeconds { get; set; } = 300;
@@ -15,6 +21,10 @@ public sealed class AppSettings
     public string SignPackageArguments { get; set; } = "sign-package {packageFolder}";
 
     public string UploadPackageArguments { get; set; } = "upload-package {waptFilePath}";
+
+    public string AuditPackageArguments { get; set; } = "audit {packageId}";
+
+    public string UninstallPackageArguments { get; set; } = "remove {packageId}";
 
     public bool DryRunEnabled { get; set; }
 

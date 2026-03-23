@@ -9,6 +9,25 @@ public sealed class ValidationResult
 
     public CommandExecutionResult? CommandResult { get; set; }
 
+    public ReadinessVerdict Verdict { get; set; } = ReadinessVerdict.Blocked;
+
+    public bool BuildPossible { get; set; }
+
+    public bool UploadPossible { get; set; }
+
+    public bool AuditPossible { get; set; }
+
+    public bool UninstallPossible { get; set; }
+
+    public string Summary { get; set; } = string.Empty;
+
+    public string VerdictLabel => Verdict switch
+    {
+        ReadinessVerdict.ReadyForBuildUpload => "PRET POUR BUILD / UPLOAD",
+        ReadinessVerdict.ReadyWithWarnings => "PRET AVEC AVERTISSEMENTS",
+        _ => "BLOQUE"
+    };
+
     public bool HasErrors => Issues.Any(issue => string.Equals(issue.Severity, "ERROR", System.StringComparison.OrdinalIgnoreCase));
 
     public bool IsValid => Issues.All(issue => !string.Equals(issue.Severity, "ERROR", System.StringComparison.OrdinalIgnoreCase))

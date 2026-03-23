@@ -38,7 +38,19 @@ public sealed class PackageSynchronizationPlan
 
     public string? ExpectedWaptFileNameNote { get; set; }
 
+    public string? CurrentInstallerType { get; set; }
+
+    public string? TargetInstallerType { get; set; }
+
+    public string? BackupDirectory { get; set; }
+
+    public bool BackupWillBeCreated { get; set; }
+
     public List<string> SummaryLines { get; } = new();
 
     public List<string> Warnings { get; } = new();
+
+    public List<string> FilesDeleted { get; } = new();
+
+    public List<string> FilesModified { get; } = new();
 }

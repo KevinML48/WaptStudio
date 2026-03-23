@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System;
 
 namespace WaptStudio.Core.Models;
 
@@ -25,6 +26,14 @@ public sealed class PackageInfo
     public string? InstallerType { get; set; }
 
     public string? ReferencedInstallerName { get; set; }
+
+    public PackageCategory Category { get; set; } = PackageCategory.Other;
+
+    public string Maturity { get; set; } = "Inconnue";
+
+    public DateTime LastModifiedUtc { get; set; }
+
+    public string? ExpectedWaptFileName { get; set; }
 
     public bool HasSetupPy => !string.IsNullOrWhiteSpace(SetupPyPath);
 

@@ -13,10 +13,13 @@ public sealed class AppRuntime
         LogService = new LogService(SettingsService);
         CommandExecutionService = new CommandExecutionService();
         HistoryService = new HistoryService();
-        PackageInspectorService = new PackageInspectorService();
+        PackageClassificationService = new PackageClassificationService();
+        PackageInspectorService = new PackageInspectorService(PackageClassificationService);
         WaptCommandService = new WaptCommandService(CommandExecutionService, SettingsService);
         PackageValidationService = new PackageValidationService(PackageInspectorService, WaptCommandService, SettingsService);
-        PackageUpdateService = new PackageUpdateService(PackageInspectorService, SettingsService);
+        BackupRestoreService = new BackupRestoreService(SettingsService);
+        PackageCatalogService = new PackageCatalogService(PackageInspectorService, PackageValidationService);
+        PackageUpdateService = new PackageUpdateService(PackageInspectorService, SettingsService, BackupRestoreService);
     }
 
     public ISettingsService SettingsService { get; }
@@ -29,11 +32,17 @@ public sealed class AppRuntime
 
     public IPackageInspectorService PackageInspectorService { get; }
 
+    public IPackageClassificationService PackageClassificationService { get; }
+
     public IWaptCommandService WaptCommandService { get; }
 
     public IPackageValidationService PackageValidationService { get; }
 
     public IPackageUpdateService PackageUpdateService { get; }
+
+    public IBackupRestoreService BackupRestoreService { get; }
+
+    public IPackageCatalogService PackageCatalogService { get; }
 
     public Task<AppSettings> LoadSettingsAsync()
         => SettingsService.LoadAsync();

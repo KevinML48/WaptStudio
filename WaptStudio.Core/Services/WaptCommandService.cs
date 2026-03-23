@@ -17,7 +17,9 @@ public sealed class WaptCommandService : IWaptCommandService
         Validate,
         Build,
         Sign,
-        Upload
+        Upload,
+        Audit,
+        Uninstall
     }
 
     private readonly ICommandExecutionService _commandExecutionService;
@@ -59,6 +61,18 @@ public sealed class WaptCommandService : IWaptCommandService
         return await ExecuteTemplateAsync(settings, WaptActionType.Upload, settings.UploadPackageArguments, packageFolder, cancellationToken, packageFolder, waptFilePath, executionContext).ConfigureAwait(false);
     }
 
+    public async Task<CommandExecutionResult> AuditPackageAsync(string packageFolder, string? packageId = null, CancellationToken cancellationToken = default)
+    {
+        var settings = await _settingsService.LoadAsync(cancellationToken).ConfigureAwait(false);
+        return await ExecuteTemplateAsync(settings, WaptActionType.Audit, settings.AuditPackageArguments, packageFolder, cancellationToken, packageFolder, null, null, packageId).ConfigureAwait(false);
+    }
+
+    public async Task<CommandExecutionResult> UninstallPackageAsync(string packageFolder, string? packageId = null, CancellationToken cancellationToken = default)
+    {
+        var settings = await _settingsService.LoadAsync(cancellationToken).ConfigureAwait(false);
+        return await ExecuteTemplateAsync(settings, WaptActionType.Uninstall, settings.UninstallPackageArguments, packageFolder, cancellationToken, packageFolder, null, null, packageId).ConfigureAwait(false);
+    }
+
     private async Task<CommandExecutionResult> ExecuteTemplateAsync(
         AppSettings settings,
         WaptActionType actionType,
@@ -67,7 +81,8 @@ public sealed class WaptCommandService : IWaptCommandService
         CancellationToken cancellationToken,
         string? packageFolder = null,
         string? waptFilePath = null,
-        WaptExecutionContext? executionContext = null)
+        WaptExecutionContext? executionContext = null,
+        string? packageId = null)
     {
         var executablePath = string.IsNullOrWhiteSpace(settings.WaptExecutablePath)
             ? CommandExecutionResult.DefaultExecutableName
@@ -80,7 +95,7 @@ public sealed class WaptCommandService : IWaptCommandService
         }
 
         var resolvedWaptFilePath = executionContext?.WaptFilePath ?? waptFilePath;
-        var arguments = BuildArguments(effectiveTemplate, settings, packageFolder, resolvedWaptFilePath, out var buildError);
+        var arguments = BuildArguments(effectiveTemplate, settings, packageFolder, resolvedWaptFilePath, packageId, out var buildError);
         var executedCommand = BuildExecutedCommand(executablePath, arguments);
 
         if (settings.DryRunEnabled)
@@ -125,13 +140,14 @@ public sealed class WaptCommandService : IWaptCommandService
         return FinalizeExecutionResult(result, actionType);
     }
 
-    private static string BuildArguments(string template, AppSettings settings, string? packageFolder, string? waptFilePath, out string? buildError)
+    private static string BuildArguments(string template, AppSettings settings, string? packageFolder, string? waptFilePath, string? packageId, out string? buildError)
     {
         buildError = null;
         var replacements = new Dictionary<string, string>
         {
             ["packageFolder"] = packageFolder is null ? string.Empty : Quote(packageFolder),
             ["waptFilePath"] = string.IsNullOrWhiteSpace(waptFilePath) ? string.Empty : Quote(waptFilePath),
+            ["packageId"] = string.IsNullOrWhiteSpace(packageId) ? string.Empty : packageId,
             ["signingKeyPath"] = string.IsNullOrWhiteSpace(settings.SigningKeyPath) ? string.Empty : Quote(settings.SigningKeyPath),
             ["uploadRepositoryUrl"] = string.IsNullOrWhiteSpace(settings.UploadRepositoryUrl) ? string.Empty : Quote(settings.UploadRepositoryUrl),
             ["repositoryOption"] = string.IsNullOrWhiteSpace(settings.UploadRepositoryUrl) ? string.Empty : $"--repository {Quote(settings.UploadRepositoryUrl)}",
@@ -152,6 +168,11 @@ public sealed class WaptCommandService : IWaptCommandService
         if (template.Contains("{waptFilePath}", StringComparison.OrdinalIgnoreCase) && string.IsNullOrWhiteSpace(waptFilePath))
         {
             buildError = "Le fichier .wapt est requis pour cette commande WAPT.";
+        }
+
+        if (template.Contains("{packageId}", StringComparison.OrdinalIgnoreCase) && string.IsNullOrWhiteSpace(packageId))
+        {
+            buildError = "Le package id est requis pour cette commande WAPT.";
         }
 
         return Regex.Replace(arguments, @"\s{2,}", " ").Trim();
@@ -255,6 +276,11 @@ public sealed class WaptCommandService : IWaptCommandService
             {
                 return "Fichier .wapt non renseigne pour l'upload.";
             }
+        }
+
+        if ((actionType == WaptActionType.Audit || actionType == WaptActionType.Uninstall) && string.IsNullOrWhiteSpace(template))
+        {
+            return "Commande WAPT non configuree pour cette action.";
         }
 
         if ((actionType == WaptActionType.Build || actionType == WaptActionType.Sign) && RequiresInteractiveInput(actionType, template) && executionContext?.HasCertificatePassword != true)

@@ -7,6 +7,9 @@ namespace WaptStudio.App.Forms;
 
 public sealed class SettingsForm : Form
 {
+    private readonly TextBox _catalogRootFolderTextBox = new() { Dock = DockStyle.Fill };
+    private readonly CheckBox _catalogRecursiveCheckBox = new() { Text = "Scan recursif complet", AutoSize = true };
+    private readonly NumericUpDown _catalogDepthInput = new() { Dock = DockStyle.Fill, Minimum = 0, Maximum = 10 };
     private readonly TextBox _waptPathTextBox = new() { Dock = DockStyle.Fill };
     private readonly NumericUpDown _timeoutInput = new() { Dock = DockStyle.Fill, Minimum = 5, Maximum = 7200 };
     private readonly CheckBox _dryRunCheckBox = new() { Text = "Activer le dry-run", AutoSize = true };
@@ -19,6 +22,8 @@ public sealed class SettingsForm : Form
     private readonly TextBox _buildArgsTextBox = new() { Dock = DockStyle.Fill };
     private readonly TextBox _signArgsTextBox = new() { Dock = DockStyle.Fill };
     private readonly TextBox _uploadArgsTextBox = new() { Dock = DockStyle.Fill };
+    private readonly TextBox _auditArgsTextBox = new() { Dock = DockStyle.Fill };
+    private readonly TextBox _uninstallArgsTextBox = new() { Dock = DockStyle.Fill };
     private readonly TextBox _logsDirectoryTextBox = new() { Dock = DockStyle.Fill };
     private readonly TextBox _backupsDirectoryTextBox = new() { Dock = DockStyle.Fill };
     private readonly TextBox _signingKeyTextBox = new() { Dock = DockStyle.Fill };
@@ -54,6 +59,9 @@ public sealed class SettingsForm : Form
         root.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
 
         var row = 0;
+        AddBrowseRow(root, row++, "Racine catalogue paquets", _catalogRootFolderTextBox, BrowseCatalogRootFolder);
+        AddSimpleRow(root, row++, "Scan recursif", _catalogRecursiveCheckBox);
+        AddSimpleRow(root, row++, "Profondeur semi-recursive", _catalogDepthInput);
         AddBrowseRow(root, row++, "Chemin WAPT", _waptPathTextBox, BrowseWaptExecutable);
         AddSimpleRow(root, row++, "Timeout global (secondes)", _timeoutInput);
         AddSimpleRow(root, row++, "Dry-run", _dryRunCheckBox);
@@ -66,6 +74,8 @@ public sealed class SettingsForm : Form
         AddSimpleRow(root, row++, "Arguments build", _buildArgsTextBox);
         AddSimpleRow(root, row++, "Arguments sign", _signArgsTextBox);
         AddSimpleRow(root, row++, "Arguments upload", _uploadArgsTextBox);
+        AddSimpleRow(root, row++, "Arguments audit", _auditArgsTextBox);
+        AddSimpleRow(root, row++, "Arguments uninstall", _uninstallArgsTextBox);
         AddBrowseRow(root, row++, "Dossier logs", _logsDirectoryTextBox, BrowseLogsDirectory);
         AddBrowseRow(root, row++, "Dossier backups", _backupsDirectoryTextBox, BrowseBackupsDirectory);
         AddBrowseRow(root, row++, "Cle de signature", _signingKeyTextBox, BrowseSigningKey);
@@ -76,7 +86,7 @@ public sealed class SettingsForm : Form
         {
             AutoSize = true,
             Dock = DockStyle.Fill,
-            Text = "Placeholders disponibles dans les arguments: {packageFolder}, {waptFilePath}, {signingKeyPath}, {uploadRepositoryUrl}, {repositoryOption}, {overwriteFlag}"
+            Text = "Placeholders disponibles dans les arguments: {packageFolder}, {waptFilePath}, {packageId}, {signingKeyPath}, {uploadRepositoryUrl}, {repositoryOption}, {overwriteFlag}"
         };
         root.Controls.Add(helpLabel, 0, row);
         root.SetColumnSpan(helpLabel, 3);
@@ -103,6 +113,9 @@ public sealed class SettingsForm : Form
 
     private void Bind(AppSettings settings)
     {
+        _catalogRootFolderTextBox.Text = settings.CatalogRootFolder ?? string.Empty;
+        _catalogRecursiveCheckBox.Checked = settings.CatalogScanRecursively;
+        _catalogDepthInput.Value = settings.CatalogSemiRecursiveDepth;
         _waptPathTextBox.Text = settings.WaptExecutablePath;
         _timeoutInput.Value = settings.CommandTimeoutSeconds;
         _dryRunCheckBox.Checked = settings.DryRunEnabled;
@@ -115,6 +128,8 @@ public sealed class SettingsForm : Form
         _buildArgsTextBox.Text = settings.BuildPackageArguments;
         _signArgsTextBox.Text = settings.SignPackageArguments;
         _uploadArgsTextBox.Text = settings.UploadPackageArguments;
+        _auditArgsTextBox.Text = settings.AuditPackageArguments;
+        _uninstallArgsTextBox.Text = settings.UninstallPackageArguments;
         _logsDirectoryTextBox.Text = settings.LogsDirectory ?? string.Empty;
         _backupsDirectoryTextBox.Text = settings.BackupsDirectory ?? string.Empty;
         _signingKeyTextBox.Text = settings.SigningKeyPath ?? string.Empty;
@@ -127,6 +142,9 @@ public sealed class SettingsForm : Form
         Settings = new AppSettings
         {
             WaptExecutablePath = _waptPathTextBox.Text.Trim(),
+            CatalogRootFolder = EmptyToNull(_catalogRootFolderTextBox.Text),
+            CatalogScanRecursively = _catalogRecursiveCheckBox.Checked,
+            CatalogSemiRecursiveDepth = (int)_catalogDepthInput.Value,
             CommandTimeoutSeconds = (int)_timeoutInput.Value,
             DryRunEnabled = _dryRunCheckBox.Checked,
             CreateBackups = _backupCheckBox.Checked,
@@ -138,6 +156,8 @@ public sealed class SettingsForm : Form
             BuildPackageArguments = _buildArgsTextBox.Text.Trim(),
             SignPackageArguments = _signArgsTextBox.Text.Trim(),
             UploadPackageArguments = _uploadArgsTextBox.Text.Trim(),
+            AuditPackageArguments = _auditArgsTextBox.Text.Trim(),
+            UninstallPackageArguments = _uninstallArgsTextBox.Text.Trim(),
             LogsDirectory = EmptyToNull(_logsDirectoryTextBox.Text),
             BackupsDirectory = EmptyToNull(_backupsDirectoryTextBox.Text),
             SigningKeyPath = EmptyToNull(_signingKeyTextBox.Text),
@@ -166,6 +186,8 @@ public sealed class SettingsForm : Form
     private void BrowseLogsDirectory(object? sender, EventArgs e) => BrowseFolder(_logsDirectoryTextBox, "Selectionner le dossier de logs");
 
     private void BrowseBackupsDirectory(object? sender, EventArgs e) => BrowseFolder(_backupsDirectoryTextBox, "Selectionner le dossier de backups");
+
+    private void BrowseCatalogRootFolder(object? sender, EventArgs e) => BrowseFolder(_catalogRootFolderTextBox, "Selectionner le dossier racine des paquets CD48");
 
     private void BrowseDefaultPackageFolder(object? sender, EventArgs e) => BrowseFolder(_defaultPackageFolderTextBox, "Selectionner le dossier paquet par defaut");
 
@@ -221,6 +243,9 @@ public sealed class SettingsForm : Form
 
     private static AppSettings Clone(AppSettings source) => new()
     {
+        CatalogRootFolder = source.CatalogRootFolder,
+        CatalogScanRecursively = source.CatalogScanRecursively,
+        CatalogSemiRecursiveDepth = source.CatalogSemiRecursiveDepth,
         WaptExecutablePath = source.WaptExecutablePath,
         CommandTimeoutSeconds = source.CommandTimeoutSeconds,
         AvailabilityArguments = source.AvailabilityArguments,
@@ -228,6 +253,8 @@ public sealed class SettingsForm : Form
         BuildPackageArguments = source.BuildPackageArguments,
         SignPackageArguments = source.SignPackageArguments,
         UploadPackageArguments = source.UploadPackageArguments,
+        AuditPackageArguments = source.AuditPackageArguments,
+        UninstallPackageArguments = source.UninstallPackageArguments,
         DryRunEnabled = source.DryRunEnabled,
         CreateBackups = source.CreateBackups,
         LogsDirectory = source.LogsDirectory,
