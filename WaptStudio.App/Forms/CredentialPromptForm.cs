@@ -1,4 +1,5 @@
 using System;
+using System.Drawing;
 using System.Windows.Forms;
 using WaptStudio.Core.Models;
 
@@ -6,6 +7,13 @@ namespace WaptStudio.App.Forms;
 
 public sealed class CredentialPromptForm : Form
 {
+    private static readonly Color SurfaceColor = Color.FromArgb(243, 245, 249);
+    private static readonly Color PanelColor = Color.White;
+    private static readonly Color BorderColor = Color.FromArgb(228, 233, 240);
+    private static readonly Color AccentColor = Color.FromArgb(37, 99, 186);
+    private static readonly Color InfoColor = Color.FromArgb(100, 116, 139);
+    private static readonly Color HeadingColor = Color.FromArgb(15, 23, 42);
+
     private readonly bool _requireCertificatePassword;
     private readonly bool _requireAdminUser;
     private readonly bool _requireAdminPassword;
@@ -25,27 +33,77 @@ public sealed class CredentialPromptForm : Form
         StartPosition = FormStartPosition.CenterParent;
         MinimizeBox = false;
         MaximizeBox = false;
+        BackColor = SurfaceColor;
+        Font = new Font("Segoe UI", 9.5F, FontStyle.Regular);
+
+        var root = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 1,
+            RowCount = 2,
+            Padding = new Padding(16),
+            BackColor = SurfaceColor
+        };
+        root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+
+        var card = new Panel
+        {
+            Dock = DockStyle.Fill,
+            BackColor = PanelColor,
+            BorderStyle = BorderStyle.None,
+            Padding = new Padding(20),
+            Margin = new Padding(0, 0, 0, 10)
+        };
 
         var layout = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
             ColumnCount = 2,
-            Padding = new Padding(12),
-            AutoSize = true
+            AutoSize = true,
+            BackColor = PanelColor
         };
         layout.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
 
         var row = 0;
+        var titleLabel = new Label
+        {
+            AutoSize = true,
+            Text = title,
+            Font = new Font("Segoe UI Semibold", 14F, FontStyle.Bold),
+            ForeColor = HeadingColor,
+            Margin = new Padding(0, 0, 0, 6)
+        };
+        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        layout.Controls.Add(titleLabel, 0, row);
+        layout.SetColumnSpan(titleLabel, 2);
+        row++;
+
         var descriptionLabel = new Label
         {
             AutoSize = true,
-            MaximumSize = new System.Drawing.Size(700, 0),
-            Text = description + Environment.NewLine + Environment.NewLine + "Les secrets restent uniquement en memoire pendant l'action en cours. Aucun mot de passe ni identifiant n'est enregistre dans les parametres, les logs ou l'historique."
+            MaximumSize = new Size(660, 0),
+            Text = description + Environment.NewLine + Environment.NewLine + "Les secrets restent uniquement en memoire pendant l'action en cours. Aucun mot de passe ni identifiant n'est enregistre dans les parametres, les logs ou l'historique.",
+            ForeColor = InfoColor,
+            Margin = new Padding(0, 0, 0, 12)
         };
         layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         layout.Controls.Add(descriptionLabel, 0, row);
         layout.SetColumnSpan(descriptionLabel, 2);
+        row++;
+
+        var reassuranceLabel = new Label
+        {
+            AutoSize = true,
+            MaximumSize = new Size(660, 0),
+            Text = "Renseignez uniquement les champs demandes ci-dessous, puis continuez. WaptStudio purge ces donnees des que l'action est terminee.",
+            ForeColor = InfoColor,
+            Margin = new Padding(0, 0, 0, 12)
+        };
+        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        layout.Controls.Add(reassuranceLabel, 0, row);
+        layout.SetColumnSpan(reassuranceLabel, 2);
         row++;
 
         if (_requireCertificatePassword)
@@ -55,30 +113,46 @@ public sealed class CredentialPromptForm : Form
 
         if (_requireAdminUser)
         {
-            AddRow(layout, row++, "Admin User", _adminUserTextBox);
+            AddRow(layout, row++, "Identifiant administrateur WAPT", _adminUserTextBox);
         }
 
         if (_requireAdminPassword)
         {
-            AddRow(layout, row++, "Password", _adminPasswordTextBox);
+            AddRow(layout, row++, "Mot de passe administrateur WAPT", _adminPasswordTextBox);
         }
+
+        card.Controls.Add(layout);
 
         var buttonsPanel = new FlowLayoutPanel
         {
-            Dock = DockStyle.Bottom,
+            Dock = DockStyle.Fill,
             FlowDirection = FlowDirection.RightToLeft,
-            Padding = new Padding(12)
+            Padding = new Padding(0),
+            BackColor = SurfaceColor
         };
 
         var confirmButton = new Button { Text = "Continuer", AutoSize = true };
         confirmButton.Click += Confirm;
         var cancelButton = new Button { Text = "Annuler", AutoSize = true, DialogResult = DialogResult.Cancel };
 
+        foreach (var button in new[] { confirmButton, cancelButton })
+        {
+            button.FlatStyle = FlatStyle.Flat;
+            button.FlatAppearance.BorderColor = BorderColor;
+            button.FlatAppearance.BorderSize = button == confirmButton ? 0 : 1;
+            button.Padding = new Padding(14, 8, 14, 8);
+            button.Margin = new Padding(8, 0, 0, 0);
+            button.BackColor = button == confirmButton ? AccentColor : PanelColor;
+            button.ForeColor = button == confirmButton ? Color.White : HeadingColor;
+            button.Font = new Font("Segoe UI", 9.5F, button == confirmButton ? FontStyle.Bold : FontStyle.Regular);
+        }
+
         buttonsPanel.Controls.Add(confirmButton);
         buttonsPanel.Controls.Add(cancelButton);
 
-        Controls.Add(layout);
-        Controls.Add(buttonsPanel);
+        root.Controls.Add(card, 0, 0);
+        root.Controls.Add(buttonsPanel, 0, 1);
+        Controls.Add(root);
         AcceptButton = confirmButton;
         CancelButton = cancelButton;
     }
@@ -125,7 +199,8 @@ public sealed class CredentialPromptForm : Form
     private static void AddRow(TableLayoutPanel layout, int rowIndex, string labelText, Control control)
     {
         layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        layout.Controls.Add(new Label { Text = labelText, AutoSize = true, Padding = new Padding(0, 6, 8, 0) }, 0, rowIndex);
+        control.Margin = new Padding(0, 0, 0, 10);
+        layout.Controls.Add(new Label { Text = labelText, AutoSize = true, Padding = new Padding(0, 6, 8, 0), Font = new Font("Segoe UI Semibold", 9.5F, FontStyle.Bold), ForeColor = HeadingColor }, 0, rowIndex);
         layout.Controls.Add(control, 1, rowIndex);
     }
 }

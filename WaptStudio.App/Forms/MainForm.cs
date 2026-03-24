@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Drawing;
+using System.Drawing.Drawing2D;
 using System.IO;
 using System.Linq;
 using System.Reflection;
@@ -18,14 +19,19 @@ namespace WaptStudio.App.Forms;
 
 public sealed class MainForm : Form
 {
-    private static readonly Color AccentColor = Color.FromArgb(42, 102, 178);
-    private static readonly Color SurfaceColor = Color.FromArgb(246, 248, 252);
+    private static readonly Color AccentColor = Color.FromArgb(37, 99, 186);
+    private static readonly Color RecommendedColor = Color.FromArgb(22, 128, 92);
+    private static readonly Color SurfaceColor = Color.FromArgb(243, 245, 249);
     private static readonly Color PanelColor = Color.White;
-    private static readonly Color BorderColor = Color.FromArgb(214, 221, 231);
-    private static readonly Color ReadyColor = Color.FromArgb(44, 135, 81);
-    private static readonly Color WarningColor = Color.FromArgb(217, 130, 24);
-    private static readonly Color BlockedColor = Color.FromArgb(186, 61, 57);
-    private static readonly Color InfoColor = Color.FromArgb(86, 102, 128);
+    private static readonly Color BorderColor = Color.FromArgb(228, 233, 240);
+    private static readonly Color ReadyColor = Color.FromArgb(22, 163, 74);
+    private static readonly Color WarningColor = Color.FromArgb(234, 149, 17);
+    private static readonly Color BlockedColor = Color.FromArgb(220, 53, 53);
+    private static readonly Color InfoColor = Color.FromArgb(100, 116, 139);
+    private static readonly Color SubtleColor = Color.FromArgb(148, 163, 184);
+    private static readonly Color SurfaceDarkColor = Color.FromArgb(235, 238, 244);
+    private static readonly Color HeadingColor = Color.FromArgb(15, 23, 42);
+    private static readonly Color CardHoverColor = Color.FromArgb(248, 250, 252);
 
     private readonly AppRuntime _runtime;
     private readonly TextBox _catalogRootFolderTextBox = new() { Dock = DockStyle.Fill, BorderStyle = BorderStyle.FixedSingle };
@@ -34,37 +40,47 @@ public sealed class MainForm : Form
     private readonly CheckBox _recursiveScanCheckBox = new() { Text = "Scan recursif", AutoSize = true };
     private readonly NumericUpDown _semiRecursiveDepthInput = new() { Minimum = 0, Maximum = 10, Value = 2, Width = 60 };
     private readonly Button _browseCatalogButton = new() { Text = "Parcourir", AutoSize = true };
-    private readonly Button _scanCatalogButton = new() { Text = "Scanner", AutoSize = true };
+    private readonly Button _scanCatalogButton = new() { Text = "Charger les paquets", AutoSize = true };
     private readonly Button _settingsButton = new() { Text = "Parametres", AutoSize = true };
     private readonly DataGridView _catalogGrid = new() { Dock = DockStyle.Fill, ReadOnly = true, AllowUserToAddRows = false, AllowUserToDeleteRows = false, AutoGenerateColumns = false, SelectionMode = DataGridViewSelectionMode.FullRowSelect, MultiSelect = false, BackgroundColor = PanelColor, BorderStyle = BorderStyle.None, RowHeadersVisible = false };
+    private readonly RichTextBox _packageSummaryTextBox = new() { Dock = DockStyle.Fill, ReadOnly = true, BorderStyle = BorderStyle.None, BackColor = PanelColor };
+    private readonly RichTextBox _assistantTextBox = new() { Dock = DockStyle.Fill, ReadOnly = true, BorderStyle = BorderStyle.None, BackColor = PanelColor };
     private readonly RichTextBox _packageDetailsTextBox = new() { Dock = DockStyle.Fill, ReadOnly = true, BorderStyle = BorderStyle.None, BackColor = PanelColor };
     private readonly RichTextBox _readinessTextBox = new() { Dock = DockStyle.Fill, ReadOnly = true, BorderStyle = BorderStyle.None, BackColor = PanelColor };
     private readonly RichTextBox _logsTextBox = new() { Dock = DockStyle.Fill, ReadOnly = true, BorderStyle = BorderStyle.None, BackColor = PanelColor };
     private readonly DataGridView _historyGrid = new() { Dock = DockStyle.Fill, ReadOnly = true, AllowUserToAddRows = false, AllowUserToDeleteRows = false, AutoGenerateColumns = false, SelectionMode = DataGridViewSelectionMode.FullRowSelect, MultiSelect = false, BackgroundColor = PanelColor, BorderStyle = BorderStyle.None, RowHeadersVisible = false };
+    private readonly TabControl _activityTabControl = new() { Dock = DockStyle.Fill };
     private readonly Label _catalogSummaryLabel = new() { AutoSize = true, Text = "Aucun paquet charge", ForeColor = InfoColor };
-    private readonly Label _selectedPackageLabel = new() { AutoSize = true, Text = "Aucun paquet selectionne", Font = new Font("Segoe UI Semibold", 15F, FontStyle.Bold) };
-    private readonly Label _selectedPackageMetaLabel = new() { AutoSize = true, Text = "Chargez un catalogue de paquets CD48.", ForeColor = InfoColor };
-    private readonly Label _readinessBadgeLabel = new() { AutoSize = true, Text = "BLOQUE", Padding = new Padding(12, 6, 12, 6), Font = new Font("Segoe UI Semibold", 10F, FontStyle.Bold) };
+    private readonly Label _selectedPackageLabel = new() { AutoSize = true, Text = "Aucun paquet selectionne", Font = new Font("Segoe UI Semibold", 14F, FontStyle.Bold), ForeColor = HeadingColor };
+    private readonly Label _selectedPackageMetaLabel = new() { AutoSize = true, Text = "Selectionnez un paquet dans le catalogue.", ForeColor = SubtleColor, Margin = new Padding(0, 6, 0, 0) };
+    private readonly Label _statusPackageValueLabel = new() { AutoSize = true, Text = "Aucun paquet choisi", ForeColor = InfoColor };
+    private readonly Label _selectionStateLabel = new() { AutoSize = true, Text = "En attente de selection", ForeColor = Color.White, BackColor = SubtleColor, Padding = new Padding(12, 5, 12, 5), Font = new Font("Segoe UI Semibold", 9.5F, FontStyle.Bold) };
+    private readonly Label _readinessBadgeLabel = new() { AutoSize = true, Text = "EN ATTENTE", Padding = new Padding(16, 8, 16, 8), Font = new Font("Segoe UI Semibold", 12F, FontStyle.Bold) };
+    private readonly Label _nextStepTitleLabel = new() { AutoSize = true, Text = "Prochaine etape", Font = new Font("Segoe UI Semibold", 14F, FontStyle.Bold), ForeColor = HeadingColor };
+    private readonly Label _nextStepDescriptionLabel = new() { AutoSize = true, Text = "Chargez un catalogue puis selectionnez un paquet.", ForeColor = InfoColor, MaximumSize = new Size(600, 0) };
     private readonly Label _actionResultValueLabel = new() { AutoSize = true, Text = "Aucune action" };
     private readonly Label _waptStatusValueLabel = new() { AutoSize = true, Text = "Inconnu" };
-    private readonly Button _analyzeButton = new() { Text = "Analyser", AutoSize = true };
-    private readonly Button _replaceInstallerButton = new() { Text = "Remplacer MSI/EXE", AutoSize = true };
-    private readonly Button _validateButton = new() { Text = "Valider readiness", AutoSize = true };
-    private readonly Button _buildButton = new() { Text = "Build", AutoSize = true };
-    private readonly Button _signButton = new() { Text = "Sign", AutoSize = true };
-    private readonly Button _uploadButton = new() { Text = "Upload", AutoSize = true };
-    private readonly Button _buildAndUploadButton = new() { Text = "Build + Upload", AutoSize = true };
-    private readonly Button _auditButton = new() { Text = "Audit", AutoSize = true };
-    private readonly Button _uninstallButton = new() { Text = "Uninstall", AutoSize = true };
-    private readonly Button _restoreBackupButton = new() { Text = "Restaurer derniere sauvegarde", AutoSize = true };
-    private readonly Button _openBackupFolderButton = new() { Text = "Ouvrir dossier backups", AutoSize = true };
-    private readonly Button _manualWorkflowButton = new() { Text = "Workflow manuel", AutoSize = true };
-    private readonly Button _saveReportButton = new() { Text = "Exporter rapport", AutoSize = true };
-    private readonly Button _historyDetailsButton = new() { Text = "Details historique", AutoSize = true };
+    private readonly Button _analyzeButton = new() { Text = "Relire le paquet", AutoSize = true };
+    private readonly Button _replaceInstallerButton = new() { Text = "Remplacer l'installeur", AutoSize = true };
+    private readonly Button _validateButton = new() { Text = "Verifier le paquet", AutoSize = true };
+    private readonly Button _buildButton = new() { Text = "Construire le .wapt", AutoSize = true };
+    private readonly Button _signButton = new() { Text = "Signer le .wapt", AutoSize = true };
+    private readonly Button _uploadButton = new() { Text = "Envoyer au depot", AutoSize = true };
+    private readonly Button _buildAndUploadButton = new() { Text = "Construire et envoyer", AutoSize = true };
+    private readonly Button _auditButton = new() { Text = "Verifier sur un poste", AutoSize = true };
+    private readonly Button _uninstallButton = new() { Text = "Desinstaller du poste", AutoSize = true };
+    private readonly Button _restoreBackupButton = new() { Text = "Revenir a la derniere sauvegarde", AutoSize = true };
+    private readonly Button _openBackupFolderButton = new() { Text = "Ouvrir les sauvegardes", AutoSize = true };
+    private readonly Button _manualWorkflowButton = new() { Text = "Mode manuel guide", AutoSize = true };
+    private readonly Button _saveReportButton = new() { Text = "Exporter un resume", AutoSize = true };
+    private readonly Button _historyDetailsButton = new() { Text = "Voir le detail", AutoSize = true };
+    private readonly Button _showAdvancedDetailsButton = new() { Text = "Voir plus de details", AutoSize = true };
 
     private readonly BindingSource _catalogBindingSource = new();
     private readonly BindingSource _historyBindingSource = new();
     private readonly System.Windows.Forms.Timer _uiPulseTimer = new() { Interval = 450 };
+    private readonly System.Windows.Forms.Timer _loadingAnimTimer = new() { Interval = 350 };
+    private int _loadingDotCount;
 
     private AppSettings _settings = new();
     private IReadOnlyList<PackageCatalogItem> _catalogItems = Array.Empty<PackageCatalogItem>();
@@ -75,6 +91,7 @@ public sealed class MainForm : Form
     private string? _lastPreparedManualCommand;
     private string? _lastPreparedManualPackageFolder;
     private string? _lastKnownWaptFilePath;
+    private string? _lastKnownWaptFilePackageFolder;
     private string _lastActionResult = "Aucune action";
     private string _currentSortColumn = nameof(PackageCatalogItem.LastModifiedUtc);
     private bool _sortAscending;
@@ -117,28 +134,34 @@ public sealed class MainForm : Form
         _categoryFilterComboBox.Items.AddRange(["Tous", "MSI", "EXE", "AUTRES"]);
         _categoryFilterComboBox.SelectedIndex = 0;
 
+        _showAdvancedDetailsButton.FlatStyle = FlatStyle.Flat;
+        _showAdvancedDetailsButton.FlatAppearance.BorderColor = BorderColor;
+        _showAdvancedDetailsButton.FlatAppearance.MouseOverBackColor = Color.FromArgb(243, 246, 251);
+        _showAdvancedDetailsButton.BackColor = PanelColor;
+        _showAdvancedDetailsButton.ForeColor = HeadingColor;
+        _showAdvancedDetailsButton.Padding = new Padding(14, 8, 14, 8);
+        _showAdvancedDetailsButton.Font = new Font("Segoe UI", 9.5F);
+
         ConfigureCatalogGrid();
         ConfigureHistoryGrid();
         StyleActionButtons();
-        UpdateReadinessBadge(ReadinessVerdict.Blocked, "Aucun verdict");
+        UpdateReadinessBadge(ReadinessVerdict.Blocked, "EN ATTENTE");
 
         var root = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
             ColumnCount = 1,
-            RowCount = 4,
-            Padding = new Padding(16, 14, 16, 16),
+            RowCount = 3,
+            Padding = new Padding(20, 16, 20, 16),
             BackColor = SurfaceColor
         };
-        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
 
         root.Controls.Add(BuildHeaderPanel(), 0, 0);
-        root.Controls.Add(BuildToolbarPanel(), 0, 1);
-        root.Controls.Add(BuildStatusStripPanel(), 0, 2);
-        root.Controls.Add(BuildMainArea(), 0, 3);
+        root.Controls.Add(BuildStatusStripPanel(), 0, 1);
+        root.Controls.Add(BuildMainArea(), 0, 2);
 
         Controls.Add(root);
     }
@@ -146,41 +169,36 @@ public sealed class MainForm : Form
     private Control BuildHeaderPanel()
     {
         var panel = CreateCardPanel();
-        panel.Padding = new Padding(18, 16, 18, 16);
+        panel.Padding = new Padding(24, 16, 24, 14);
+        panel.AutoSize = true;
 
-        var layout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 6, RowCount = 2, BackColor = PanelColor };
-        layout.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        var layout = new TableLayoutPanel { Dock = DockStyle.Top, ColumnCount = 1, RowCount = 2, AutoSize = true, BackColor = PanelColor };
         layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        layout.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-        layout.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-        layout.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-        layout.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+
+        var topRow = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, AutoSize = true, BackColor = PanelColor };
+        topRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        topRow.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
 
         var titleLabel = new Label
         {
-            Text = "Inventaire paquets CD48",
+            Text = "WaptStudio",
             AutoSize = true,
-            Font = new Font("Segoe UI Semibold", 18F, FontStyle.Bold),
-            ForeColor = Color.FromArgb(34, 45, 68),
-            Margin = new Padding(0, 0, 0, 8)
+            Font = new Font("Segoe UI Semibold", 16F, FontStyle.Bold),
+            ForeColor = HeadingColor,
+            Margin = new Padding(0, 0, 0, 0)
         };
 
-        var subtitleLabel = new Label
-        {
-            Text = "Chargez un dossier racine, filtrez les paquets MSI / EXE / AUTRES, puis pilotez readiness, remplacement, build, upload, uninstall et audit.",
-            AutoSize = true,
-            ForeColor = InfoColor,
-            Margin = new Padding(0, 0, 0, 10)
-        };
+        var statusRow = new FlowLayoutPanel { AutoSize = true, WrapContents = false, BackColor = PanelColor, Margin = new Padding(0, 6, 0, 0) };
+        statusRow.Controls.Add(_catalogSummaryLabel);
+        statusRow.Controls.Add(new Label { Text = "  ·  ", AutoSize = true, ForeColor = SubtleColor, Padding = new Padding(0, 0, 0, 0) });
+        statusRow.Controls.Add(_waptStatusValueLabel);
 
-        layout.Controls.Add(titleLabel, 0, 0);
-        layout.SetColumnSpan(titleLabel, 6);
-        layout.Controls.Add(subtitleLabel, 0, 1);
-        layout.SetColumnSpan(subtitleLabel, 6);
+        topRow.Controls.Add(titleLabel, 0, 0);
+        topRow.Controls.Add(statusRow, 1, 0);
 
-        var inputs = new TableLayoutPanel { Dock = DockStyle.Bottom, ColumnCount = 9, AutoSize = true, BackColor = PanelColor, Margin = new Padding(0, 16, 0, 0) };
+        var inputs = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 9, AutoSize = true, BackColor = PanelColor, Margin = new Padding(0, 12, 0, 0) };
         inputs.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         inputs.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         inputs.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
@@ -191,88 +209,41 @@ public sealed class MainForm : Form
         inputs.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         inputs.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
 
-        inputs.Controls.Add(new Label { Text = "Racine CD48", AutoSize = true, Padding = new Padding(0, 8, 8, 0), ForeColor = InfoColor }, 0, 0);
+        inputs.Controls.Add(new Label { Text = "Dossier catalogue", AutoSize = true, Padding = new Padding(0, 8, 8, 0), ForeColor = InfoColor, Font = new Font("Segoe UI", 9F) }, 0, 0);
         inputs.Controls.Add(_catalogRootFolderTextBox, 1, 0);
         inputs.Controls.Add(_browseCatalogButton, 2, 0);
         inputs.Controls.Add(_recursiveScanCheckBox, 3, 0);
-        inputs.Controls.Add(new Label { Text = "Profondeur", AutoSize = true, Padding = new Padding(12, 8, 6, 0), ForeColor = InfoColor }, 4, 0);
+        inputs.Controls.Add(new Label { Text = "Profondeur", AutoSize = true, Padding = new Padding(12, 8, 6, 0), ForeColor = InfoColor, Font = new Font("Segoe UI", 9F) }, 4, 0);
         inputs.Controls.Add(_semiRecursiveDepthInput, 5, 0);
         inputs.Controls.Add(_scanCatalogButton, 6, 0);
         inputs.Controls.Add(_settingsButton, 7, 0);
-        inputs.Controls.Add(_catalogSummaryLabel, 8, 0);
+
+        layout.Controls.Add(topRow, 0, 0);
+        layout.Controls.Add(inputs, 0, 1);
 
         panel.Controls.Add(layout);
-        panel.Controls.Add(inputs);
-        return panel;
-    }
-
-    private Control BuildToolbarPanel()
-    {
-        var panel = CreateCardPanel();
-        panel.Padding = new Padding(18, 14, 18, 14);
-
-        var root = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 3, BackColor = PanelColor };
-        root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        root.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-        root.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-
-        var filterRow = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, WrapContents = true, BackColor = PanelColor };
-        filterRow.Controls.Add(new Label { Text = "Recherche", AutoSize = true, Padding = new Padding(0, 8, 8, 0), ForeColor = InfoColor });
-        _searchTextBox.Width = 220;
-        filterRow.Controls.Add(_searchTextBox);
-        filterRow.Controls.Add(new Label { Text = "Categorie", AutoSize = true, Padding = new Padding(14, 8, 8, 0), ForeColor = InfoColor });
-        _categoryFilterComboBox.Width = 120;
-        filterRow.Controls.Add(_categoryFilterComboBox);
-        filterRow.Controls.Add(new Label { Text = "Selection", AutoSize = true, Padding = new Padding(14, 8, 8, 0), ForeColor = InfoColor });
-        filterRow.Controls.Add(_selectedPackageLabel);
-
-        var actions = new FlowLayoutPanel { Dock = DockStyle.Right, AutoSize = true, WrapContents = true, BackColor = PanelColor };
-        actions.Controls.AddRange([
-            _analyzeButton,
-            _replaceInstallerButton,
-            _validateButton,
-            _buildButton,
-            _signButton,
-            _uploadButton,
-            _buildAndUploadButton,
-            _auditButton,
-            _uninstallButton,
-            _restoreBackupButton,
-            _openBackupFolderButton,
-            _manualWorkflowButton,
-            _saveReportButton,
-            _historyDetailsButton
-        ]);
-
-        root.Controls.Add(filterRow, 0, 0);
-        root.Controls.Add(new Panel { Width = 12, BackColor = PanelColor }, 1, 0);
-        root.Controls.Add(actions, 2, 0);
-        panel.Controls.Add(root);
         return panel;
     }
 
     private Control BuildStatusStripPanel()
     {
         var panel = CreateCardPanel();
-        panel.Padding = new Padding(18, 12, 18, 12);
+        panel.Padding = new Padding(24, 8, 24, 8);
+        panel.BackColor = SurfaceDarkColor;
+        panel.AutoSize = true;
 
-        var layout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 6, BackColor = PanelColor };
+        var layout = new TableLayoutPanel { Dock = DockStyle.Top, ColumnCount = 6, AutoSize = true, BackColor = SurfaceDarkColor };
         for (var index = 0; index < 6; index++)
         {
             layout.ColumnStyles.Add(new ColumnStyle(index % 2 == 0 ? SizeType.AutoSize : SizeType.Percent, index % 2 == 0 ? 0 : 50));
         }
 
-        layout.Controls.Add(new Label { Text = "Paquet", AutoSize = true, Padding = new Padding(0, 7, 10, 0), ForeColor = InfoColor }, 0, 0);
-        layout.Controls.Add(_selectedPackageMetaLabel, 1, 0);
-        layout.Controls.Add(new Label { Text = "Readiness", AutoSize = true, Padding = new Padding(24, 7, 10, 0), ForeColor = InfoColor }, 2, 0);
+        layout.Controls.Add(new Label { Text = "Paquet", AutoSize = true, Padding = new Padding(0, 5, 10, 0), ForeColor = SubtleColor, Font = new Font("Segoe UI", 9F) }, 0, 0);
+        layout.Controls.Add(_statusPackageValueLabel, 1, 0);
+        layout.Controls.Add(new Label { Text = "Etat", AutoSize = true, Padding = new Padding(24, 5, 10, 0), ForeColor = SubtleColor, Font = new Font("Segoe UI", 9F) }, 2, 0);
         layout.Controls.Add(_readinessBadgeLabel, 3, 0);
-        layout.Controls.Add(new Label { Text = "WAPT / Action", AutoSize = true, Padding = new Padding(24, 7, 10, 0), ForeColor = InfoColor }, 4, 0);
-
-        var actionMetaPanel = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, BackColor = PanelColor };
-        actionMetaPanel.Controls.Add(_waptStatusValueLabel);
-        actionMetaPanel.Controls.Add(new Label { Text = "|", AutoSize = true, Padding = new Padding(8, 0, 8, 0), ForeColor = BorderColor });
-        actionMetaPanel.Controls.Add(_actionResultValueLabel);
-        layout.Controls.Add(actionMetaPanel, 5, 0);
+        layout.Controls.Add(new Label { Text = "Derniere action", AutoSize = true, Padding = new Padding(24, 5, 10, 0), ForeColor = SubtleColor, Font = new Font("Segoe UI", 9F) }, 4, 0);
+        layout.Controls.Add(_actionResultValueLabel, 5, 0);
 
         panel.Controls.Add(layout);
         return panel;
@@ -280,9 +251,9 @@ public sealed class MainForm : Form
 
     private Control BuildMainArea()
     {
-        var split = new SplitContainer { Dock = DockStyle.Fill, Orientation = Orientation.Vertical, SplitterDistance = 760, BackColor = SurfaceColor };
-        split.Panel1.Padding = new Padding(0, 6, 8, 0);
-        split.Panel2.Padding = new Padding(8, 6, 0, 0);
+        var split = new SplitContainer { Dock = DockStyle.Fill, Orientation = Orientation.Vertical, SplitterDistance = 750, SplitterWidth = 6, BackColor = SurfaceColor };
+        split.Panel1.Padding = new Padding(0, 8, 4, 0);
+        split.Panel2.Padding = new Padding(4, 8, 0, 0);
 
         split.Panel1.Controls.Add(BuildCatalogArea());
         split.Panel2.Controls.Add(BuildDetailsArea());
@@ -292,13 +263,48 @@ public sealed class MainForm : Form
     private Control BuildCatalogArea()
     {
         var card = CreateCardPanel();
-        card.Padding = new Padding(14);
+        card.Padding = new Padding(20);
+        card.Paint += (sender, e) =>
+        {
+            var p = (Panel)sender!;
+            using var pen = new Pen(BorderColor, 1);
+            e.Graphics.DrawRectangle(pen, 0, 0, p.Width - 1, p.Height - 1);
+        };
 
-        var layout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 2, BackColor = PanelColor };
+        var layout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 3, BackColor = PanelColor };
+        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        layout.Controls.Add(CreateSectionHeader("Liste des paquets", "Inventaire triable et filtrable des paquets WAPT detectes."), 0, 0);
-        layout.Controls.Add(_catalogGrid, 0, 1);
+        layout.Controls.Add(CreateSectionHeader("Catalogue", "Selectionnez un paquet pour voir son etat et les actions disponibles."), 0, 0);
+
+        var filterRow = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            AutoSize = true,
+            ColumnCount = 6,
+            BackColor = SurfaceColor,
+            Margin = new Padding(0, 0, 0, 12),
+            Padding = new Padding(12, 8, 12, 8)
+        };
+        filterRow.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        filterRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        filterRow.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        filterRow.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        filterRow.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        filterRow.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        filterRow.Controls.Add(new Label { Text = "\uD83D\uDD0D", AutoSize = true, Padding = new Padding(0, 6, 6, 0), ForeColor = SubtleColor, Font = new Font("Segoe UI", 9F) }, 0, 0);
+        _searchTextBox.Width = 260;
+        _searchTextBox.Font = new Font("Segoe UI", 9.5F);
+        filterRow.Controls.Add(_searchTextBox, 1, 0);
+        filterRow.Controls.Add(new Label { Text = "Type", AutoSize = true, Padding = new Padding(16, 6, 6, 0), ForeColor = SubtleColor, Font = new Font("Segoe UI", 9F) }, 2, 0);
+        _categoryFilterComboBox.Width = 140;
+        _categoryFilterComboBox.Font = new Font("Segoe UI", 9.5F);
+        filterRow.Controls.Add(_categoryFilterComboBox, 3, 0);
+        filterRow.Controls.Add(new Label { Text = "Statut", AutoSize = true, Padding = new Padding(16, 6, 6, 0), ForeColor = SubtleColor, Font = new Font("Segoe UI", 9F) }, 4, 0);
+        filterRow.Controls.Add(_selectionStateLabel, 5, 0);
+        layout.Controls.Add(filterRow, 0, 1);
+
+        layout.Controls.Add(_catalogGrid, 0, 2);
 
         card.Controls.Add(layout);
         return card;
@@ -306,16 +312,20 @@ public sealed class MainForm : Form
 
     private Control BuildDetailsArea()
     {
-        var layout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 4, BackColor = SurfaceColor };
-        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 33));
-        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 24));
-        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 19));
-        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 24));
+        var layout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 3, BackColor = SurfaceColor };
+        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 30));
+        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 35));
+        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 35));
 
-        layout.Controls.Add(CreateSectionCard("Detail paquet", "Vue detaillee du paquet CD48 selectionne.", _packageDetailsTextBox), 0, 0);
-        layout.Controls.Add(CreateSectionCard("Verdict readiness", "Explication claire des blocages, avertissements et actions possibles.", _readinessTextBox), 0, 1);
-        layout.Controls.Add(CreateSectionCard("Journal", "Historique immediat des actions et des resultats WAPT.", _logsTextBox), 0, 2);
-        layout.Controls.Add(CreateSectionCard("Historique local", "Actions tracees avec statut, message, readiness et chemin .wapt.", _historyGrid), 0, 3);
+        var summaryRow = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, BackColor = SurfaceColor, Margin = new Padding(0, 0, 0, 4) };
+        summaryRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 45));
+        summaryRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 55));
+        summaryRow.Controls.Add(BuildPackageSummaryCard(), 0, 0);
+        summaryRow.Controls.Add(BuildAssistantCard(), 1, 0);
+
+        layout.Controls.Add(summaryRow, 0, 0);
+        layout.Controls.Add(BuildActionFamiliesCard(), 0, 1);
+        layout.Controls.Add(BuildActivityArea(), 0, 2);
         return layout;
     }
 
@@ -344,7 +354,16 @@ public sealed class MainForm : Form
         _openBackupFolderButton.Click += (_, _) => OpenFolder(AppPaths.ResolveBackupsDirectory(_settings));
         _manualWorkflowButton.Click += async (_, _) => await ShowManualWorkflowAsync().ConfigureAwait(true);
         _saveReportButton.Click += async (_, _) => await SaveReportAsync().ConfigureAwait(true);
+        _showAdvancedDetailsButton.Click += (_, _) => _activityTabControl.SelectedIndex = 2;
         _uiPulseTimer.Tick += (_, _) => PulseSelectionAccent();
+        _loadingAnimTimer.Tick += (_, _) =>
+        {
+            _loadingDotCount = (_loadingDotCount + 1) % 4;
+            var dots = new string('.', _loadingDotCount);
+            _scanCatalogButton.Text = $"Chargement{dots}";
+            var alpha = 180 + (int)(75 * Math.Sin(_loadingDotCount * Math.PI / 2));
+            _scanCatalogButton.BackColor = Color.FromArgb(alpha, AccentColor.R, AccentColor.G, AccentColor.B);
+        };
     }
 
     private async Task OpenSettingsAsync()
@@ -381,6 +400,11 @@ public sealed class MainForm : Form
                 throw new DirectoryNotFoundException("Selectionnez un dossier racine CD48 valide.");
             }
 
+            _scanCatalogButton.Text = "Chargement...";
+            _scanCatalogButton.Enabled = false;
+            _loadingDotCount = 0;
+            _loadingAnimTimer.Start();
+            _catalogSummaryLabel.Text = "Scan en cours...";
             AppendLog($"Scan catalogue: {rootFolder}");
             _settings.CatalogRootFolder = rootFolder;
             _settings.CatalogScanRecursively = _recursiveScanCheckBox.Checked;
@@ -399,6 +423,13 @@ public sealed class MainForm : Form
         catch (Exception ex)
         {
             await HandleUiOperationErrorAsync("Scan catalogue impossible.", ex).ConfigureAwait(true);
+        }
+        finally
+        {
+            _loadingAnimTimer.Stop();
+            _scanCatalogButton.Text = "Charger les paquets";
+            _scanCatalogButton.Enabled = true;
+            _scanCatalogButton.BackColor = AccentColor;
         }
     }
 
@@ -474,15 +505,17 @@ public sealed class MainForm : Form
 
     private async Task HandleSelectedCatalogItemChangedAsync()
     {
+        var previousPackageFolder = _selectedCatalogItem?.PackageFolder;
         if (_catalogGrid.CurrentRow?.DataBoundItem is not PackageCatalogItem item)
         {
             return;
         }
 
         _selectedCatalogItem = item;
+        _lastKnownWaptFilePackageFolder = item.PackageFolder;
         _lastKnownWaptFilePath = ResolveExpectedWaptFilePath(item.PackageInfo.PackageFolder, allowExpectedPathWhenMissing: false);
 
-        if (_currentValidationResult is null || !_currentValidationResult.Issues.Any() || !string.Equals(item.PackageFolder, _selectedCatalogItem?.PackageFolder, StringComparison.OrdinalIgnoreCase))
+        if (_currentValidationResult is null || !_currentValidationResult.Issues.Any() || !string.Equals(item.PackageFolder, previousPackageFolder, StringComparison.OrdinalIgnoreCase))
         {
             _currentValidationResult = await _runtime.PackageValidationService.ValidateAsync(item.PackageFolder, item.PackageInfo, includeWaptValidation: false).ConfigureAwait(true);
         }
@@ -495,18 +528,40 @@ public sealed class MainForm : Form
         if (item is null)
         {
             _selectedPackageLabel.Text = "Aucun paquet selectionne";
-            _selectedPackageMetaLabel.Text = "Chargez un catalogue puis selectionnez un paquet.";
+            _selectedPackageLabel.ForeColor = SubtleColor;
+            _selectedPackageMetaLabel.Text = "Selectionnez un paquet dans le catalogue.";
+            _selectedPackageMetaLabel.ForeColor = SubtleColor;
+            _statusPackageValueLabel.Text = "Aucun paquet choisi";
+            _selectionStateLabel.Text = "En attente";
+            _selectionStateLabel.BackColor = SubtleColor;
+            _packageSummaryTextBox.Text = string.Empty;
+            _assistantTextBox.Text = "Selectionnez un paquet dans le catalogue pour afficher son etat et la prochaine action recommandee.";
             _packageDetailsTextBox.Text = string.Empty;
             _readinessTextBox.Text = string.Empty;
-            UpdateReadinessBadge(ReadinessVerdict.Blocked, "Aucun verdict");
+            _nextStepTitleLabel.Text = "Choisir un paquet";
+            _nextStepDescriptionLabel.Text = "Chargez un catalogue puis selectionnez un paquet pour commencer.";
+            UpdateReadinessBadge(ReadinessVerdict.Blocked, "EN ATTENTE");
+            StyleActionButtons();
             return;
         }
 
         _selectedPackageLabel.Text = item.PackageId;
-        _selectedPackageMetaLabel.Text = $"{item.VisibleName} | v{(string.IsNullOrWhiteSpace(item.Version) ? "N/A" : item.Version)} | {item.Category.ToString().ToUpperInvariant()} | {item.Maturity}";
+        _selectedPackageLabel.ForeColor = HeadingColor;
+        _selectedPackageMetaLabel.Text = $"{item.VisibleName}  \u00b7  Version {(string.IsNullOrWhiteSpace(item.Version) ? "non detectee" : item.Version)}  \u00b7  {item.Category.ToString().ToUpperInvariant()}  \u00b7  {item.Maturity}";
+        _selectedPackageMetaLabel.ForeColor = InfoColor;
+        _statusPackageValueLabel.Text = $"{item.PackageId} - {item.VisibleName}";
+        _selectionStateLabel.Text = BuildSelectionStateLabel(validationResult);
+        _selectionStateLabel.BackColor = GetVerdictColor(validationResult?.Verdict ?? item.ReadinessVerdict);
+        _packageSummaryTextBox.Text = BuildPackageSummaryText(item, validationResult);
+        _assistantTextBox.Text = BuildAssistantText(validationResult);
         _packageDetailsTextBox.Text = BuildPackageDetailsText(item);
         _readinessTextBox.Text = BuildReadinessText(validationResult);
         UpdateReadinessBadge(validationResult?.Verdict ?? item.ReadinessVerdict, validationResult?.VerdictLabel ?? item.ReadinessLabel);
+
+        var nextStep = BuildNextStepGuidance(item, validationResult);
+        _nextStepTitleLabel.Text = nextStep.Title;
+        _nextStepDescriptionLabel.Text = nextStep.Description;
+        StyleActionButtons(nextStep.RecommendedButton);
     }
 
     private async Task AnalyzeSelectedPackageAsync()
@@ -596,6 +651,8 @@ public sealed class MainForm : Form
             _selectedCatalogItem = updatedItem;
             _currentValidationResult = updatedValidation;
             RenderSelectedPackage(updatedItem, updatedValidation);
+            _lastKnownWaptFilePackageFolder = updatedItem.PackageFolder;
+            _lastKnownWaptFilePath = ResolveExpectedWaptFilePath(updatedItem.PackageFolder, allowExpectedPathWhenMissing: false);
 
             AppendLog(result.Message);
             foreach (var line in result.ChangeSummaryLines)
@@ -617,11 +674,41 @@ public sealed class MainForm : Form
         }
     }
 
+    private async Task<PackageCatalogItem> RefreshSelectedPackageStateAsync(bool includeValidation)
+    {
+        var item = RequireSelectedPackage();
+        var refreshedPackage = await _runtime.PackageInspectorService.AnalyzePackageAsync(item.PackageFolder).ConfigureAwait(true);
+        var validationResult = includeValidation || _currentValidationResult is null
+            ? await _runtime.PackageValidationService.ValidateAsync(refreshedPackage.PackageFolder, refreshedPackage, includeWaptValidation: false).ConfigureAwait(true)
+            : _currentValidationResult;
+
+        var updatedItem = new PackageCatalogItem
+        {
+            PackageId = refreshedPackage.PackageName ?? item.PackageId,
+            VisibleName = refreshedPackage.VisibleName ?? item.VisibleName,
+            Version = refreshedPackage.Version ?? item.Version,
+            Category = refreshedPackage.Category,
+            Maturity = refreshedPackage.Maturity,
+            ReadinessVerdict = validationResult.Verdict,
+            ReadinessLabel = validationResult.VerdictLabel,
+            LastModifiedUtc = refreshedPackage.LastModifiedUtc,
+            PackageFolder = refreshedPackage.PackageFolder,
+            PrimaryInstallerName = Path.GetFileName(refreshedPackage.InstallerPath ?? string.Empty),
+            PackageInfo = refreshedPackage
+        };
+
+        ReplaceCatalogItem(item, validationResult, updatedItem);
+        _selectedCatalogItem = updatedItem;
+        _currentValidationResult = validationResult;
+        RenderSelectedPackage(updatedItem, validationResult);
+        return updatedItem;
+    }
+
     private async Task<bool> ExecuteBuildAsync(WaptExecutionContext? providedContext = null)
     {
         try
         {
-            var item = RequireSelectedPackage();
+            var item = await RefreshSelectedPackageStateAsync(includeValidation: false).ConfigureAwait(true);
             var ownsContext = providedContext is null;
             var executionContext = providedContext;
 
@@ -643,7 +730,12 @@ public sealed class MainForm : Form
 
                 var result = await _runtime.WaptCommandService.BuildPackageAsync(item.PackageFolder, executionContext).ConfigureAwait(true);
                 var outcome = await HandleActionResultAsync("Build", item, result, executionContext?.GetSensitiveValues(), null).ConfigureAwait(true);
-                _lastKnownWaptFilePath = outcome.ArtifactPath ?? ResolveExpectedWaptFilePath(item.PackageFolder, allowExpectedPathWhenMissing: result.IsDryRun);
+                _lastKnownWaptFilePath = outcome.ArtifactPath
+                    ?? ExtractWaptFilePathFromOutput(result.StandardOutput)
+                    ?? ResolveExpectedWaptFilePath(item.PackageFolder, allowExpectedPathWhenMissing: result.IsDryRun);
+                _lastKnownWaptFilePackageFolder = outcome.ArtifactPath is null && string.IsNullOrWhiteSpace(_lastKnownWaptFilePath)
+                    ? _lastKnownWaptFilePackageFolder
+                    : item.PackageFolder;
                 return outcome.Completed;
             }
             finally
@@ -665,7 +757,7 @@ public sealed class MainForm : Form
     {
         try
         {
-            var item = RequireSelectedPackage();
+            var item = await RefreshSelectedPackageStateAsync(includeValidation: false).ConfigureAwait(true);
             var ownsContext = providedContext is null;
             var executionContext = providedContext;
 
@@ -708,13 +800,95 @@ public sealed class MainForm : Form
     {
         try
         {
-            var item = RequireSelectedPackage();
-            var waptFilePath = ResolveUploadWaptFilePath(item.PackageFolder, explicitWaptFilePath, allowExpectedPathWhenMissing: _settings.DryRunEnabled);
+            var item = await RefreshSelectedPackageStateAsync(includeValidation: false).ConfigureAwait(true);
+            var selection = ResolveUploadWaptSelection(item.PackageFolder, explicitWaptFilePath, allowExpectedPathWhenMissing: _settings.DryRunEnabled);
+            var waptFilePath = selection.ResolvedPath;
+
             if (string.IsNullOrWhiteSpace(waptFilePath))
             {
-                MessageBox.Show(this, "Aucun fichier .wapt n'a pu etre determine pour l'upload.", "Upload", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                return false;
+                var chooseManually = MessageBox.Show(this, "Aucun fichier .wapt coherent n'a ete trouve pour ce paquet. Voulez-vous en selectionner un manuellement ?", "Upload", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == DialogResult.Yes;
+                if (!chooseManually)
+                {
+                    await RegisterHistoryAsync("UploadBlocked", false, item.PackageFolder, item.PackageId, "Upload bloque: aucun .wapt coherent detecte.", null, item.PackageInfo.Version, item.PackageInfo.Version, null, _currentValidationResult?.VerdictLabel).ConfigureAwait(true);
+                    return false;
+                }
+
+                using var dialog = new OpenFileDialog
+                {
+                    Filter = "Paquets WAPT (*.wapt)|*.wapt|Tous les fichiers (*.*)|*.*",
+                    Title = "Selectionner le paquet .wapt a uploader",
+                    FileName = selection.ExpectedName ?? string.Empty,
+                    InitialDirectory = Directory.Exists(item.PackageFolder) ? item.PackageFolder : Environment.GetFolderPath(Environment.SpecialFolder.Desktop)
+                };
+
+                if (dialog.ShowDialog(this) != DialogResult.OK)
+                {
+                    return false;
+                }
+
+                if (!IsCoherentWaptForPackage(Path.GetFileName(dialog.FileName), item.PackageInfo.PackageName ?? item.PackageId, item.PackageInfo.Version ?? item.Version))
+                {
+                    MessageBox.Show(this, "Le fichier selectionne ne correspond pas au package/version courants.", "Upload", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    await RegisterHistoryAsync("UploadBlocked", false, item.PackageFolder, item.PackageId, "Upload bloque: .wapt manuel incoherent.", null, item.PackageInfo.Version, item.PackageInfo.Version, dialog.FileName, _currentValidationResult?.VerdictLabel).ConfigureAwait(true);
+                    return false;
+                }
+
+                waptFilePath = dialog.FileName;
+                selection = selection with { ResolvedPath = waptFilePath, CandidateName = Path.GetFileName(dialog.FileName), ExactMatch = string.Equals(Path.GetFileName(dialog.FileName), selection.ExpectedName, StringComparison.OrdinalIgnoreCase) };
             }
+
+            var expectedWaptName = selection.ExpectedName;
+            var candidateName = selection.CandidateName;
+
+            if (!_settings.DryRunEnabled)
+            {
+                if (!File.Exists(waptFilePath))
+                {
+                    MessageBox.Show(this, $"Le fichier .wapt a uploader est introuvable: {waptFilePath}", "Upload", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    await RegisterHistoryAsync("UploadBlocked", false, item.PackageFolder, item.PackageId, $"Upload bloque: fichier .wapt introuvable ({waptFilePath})", null, item.PackageInfo.Version, item.PackageInfo.Version, null, _currentValidationResult?.VerdictLabel).ConfigureAwait(true);
+                    return false;
+                }
+
+                if (!string.IsNullOrWhiteSpace(expectedWaptName) && !string.Equals(Path.GetFileName(waptFilePath), expectedWaptName, StringComparison.OrdinalIgnoreCase))
+                {
+                    var mismatchMessage = $"Upload bloque: le .wapt detecte ({Path.GetFileName(waptFilePath)}) ne correspond pas au nom attendu ({expectedWaptName}).";
+
+                    if (MessageBox.Show(this, mismatchMessage + "\r\nVoulez-vous selectionner manuellement le bon .wapt ?", "Upload", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == DialogResult.Yes)
+                    {
+                        using var dialog = new OpenFileDialog
+                        {
+                            Filter = "Paquets WAPT (*.wapt)|*.wapt|Tous les fichiers (*.*)|*.*",
+                            Title = "Selectionner le paquet .wapt a uploader",
+                            FileName = expectedWaptName,
+                            InitialDirectory = Directory.Exists(item.PackageFolder) ? item.PackageFolder : Environment.GetFolderPath(Environment.SpecialFolder.Desktop)
+                        };
+
+                        if (dialog.ShowDialog(this) != DialogResult.OK)
+                        {
+                            return false;
+                        }
+
+                        if (!string.Equals(Path.GetFileName(dialog.FileName), expectedWaptName, StringComparison.OrdinalIgnoreCase))
+                        {
+                            MessageBox.Show(this, "Le fichier selectionne ne correspond toujours pas au nom attendu.", "Upload", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                            await RegisterHistoryAsync("UploadBlocked", false, item.PackageFolder, item.PackageId, mismatchMessage, null, item.PackageInfo.Version, item.PackageInfo.Version, dialog.FileName, _currentValidationResult?.VerdictLabel).ConfigureAwait(true);
+                            return false;
+                        }
+
+                        waptFilePath = dialog.FileName;
+                        candidateName = Path.GetFileName(dialog.FileName);
+                    }
+                    else
+                    {
+                        await RegisterHistoryAsync("UploadBlocked", false, item.PackageFolder, item.PackageId, mismatchMessage, null, item.PackageInfo.Version, item.PackageInfo.Version, waptFilePath, _currentValidationResult?.VerdictLabel).ConfigureAwait(true);
+                        return false;
+                    }
+                }
+            }
+
+            var selectionText = BuildUploadSelectionText(expectedWaptName, candidateName, waptFilePath);
+            AppendLog(selectionText);
+            SetActionResult(selectionText.Replace("\r\n", " | "), InfoColor);
 
             var ownsContext = providedContext is null;
             var executionContext = providedContext;
@@ -738,7 +912,10 @@ public sealed class MainForm : Form
                 {
                     executionContext.WaptFilePath = waptFilePath;
                 }
-
+                _lastKnownWaptFilePath = waptFilePath;
+                _lastKnownWaptFilePackageFolder = item.PackageFolder;
+                await RegisterHistoryAsync("UploadPrepared", true, item.PackageFolder, item.PackageId, $"Upload prepare avec: {waptFilePath}", null, item.PackageInfo.Version, item.PackageInfo.Version, waptFilePath, _currentValidationResult?.VerdictLabel).ConfigureAwait(true);
+                AppendLog($"Upload cible: {waptFilePath}");
                 var result = await _runtime.WaptCommandService.UploadPackageAsync(item.PackageFolder, waptFilePath, executionContext).ConfigureAwait(true);
                 var outcome = await HandleActionResultAsync("Upload", item, result, executionContext?.GetSensitiveValues(), waptFilePath).ConfigureAwait(true);
                 return outcome.Completed;
@@ -765,6 +942,8 @@ public sealed class MainForm : Form
             WaptExecutionContext? executionContext = null;
             try
             {
+                var item = await RefreshSelectedPackageStateAsync(includeValidation: false).ConfigureAwait(true);
+
                 if (!_settings.DryRunEnabled)
                 {
                     executionContext = PromptForCredentials(
@@ -779,21 +958,55 @@ public sealed class MainForm : Form
                     }
                 }
 
+                await RegisterHistoryAsync("BuildAndUploadPrepared", true, item.PackageFolder, item.PackageId, "Workflow Build + Upload demarre.", null, item.PackageInfo.Version, item.PackageInfo.Version, null, _currentValidationResult?.VerdictLabel).ConfigureAwait(true);
+
                 var buildCompleted = await ExecuteBuildAsync(executionContext).ConfigureAwait(true);
                 if (!buildCompleted)
                 {
+                    await RegisterHistoryAsync("BuildAndUploadFailed", false, item.PackageFolder, item.PackageId, "Build + Upload echoue: le build n'a pas abouti.", null, item.PackageInfo.Version, item.PackageInfo.Version, null, _currentValidationResult?.VerdictLabel).ConfigureAwait(true);
                     return;
                 }
 
-                var item = RequireSelectedPackage();
-                var uploadTarget = ResolveUploadWaptFilePath(item.PackageFolder, _lastKnownWaptFilePath, allowExpectedPathWhenMissing: _settings.DryRunEnabled);
+                await RegisterHistoryAsync("BuildAndUploadBuildSucceeded", true, item.PackageFolder, item.PackageId, $"Build reussi. Fichier .wapt: {_lastKnownWaptFilePath ?? "indetermine"}", null, item.PackageInfo.Version, item.PackageInfo.Version, _lastKnownWaptFilePath, _currentValidationResult?.VerdictLabel).ConfigureAwait(true);
+
+                if (!_settings.DryRunEnabled && (string.IsNullOrWhiteSpace(_lastKnownWaptFilePath) || !File.Exists(_lastKnownWaptFilePath)))
+                {
+                    var noWaptMessage = "Build + Upload: aucun fichier .wapt confirme apres le build. Verifiez que le build a produit un fichier .wapt.";
+                    await RegisterHistoryAsync("BuildAndUploadFailed", false, item.PackageFolder, item.PackageId, noWaptMessage, null, item.PackageInfo.Version, item.PackageInfo.Version, null, _currentValidationResult?.VerdictLabel).ConfigureAwait(true);
+                    MessageBox.Show(this, noWaptMessage, "Build + Upload", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+
+                var lastForPackage = string.Equals(_lastKnownWaptFilePackageFolder, item.PackageFolder, StringComparison.OrdinalIgnoreCase)
+                    ? _lastKnownWaptFilePath
+                    : null;
+
+                var uploadSelection = ResolveUploadWaptSelection(item.PackageFolder, lastForPackage, allowExpectedPathWhenMissing: _settings.DryRunEnabled);
+                var uploadTarget = uploadSelection.ResolvedPath;
+
                 if (string.IsNullOrWhiteSpace(uploadTarget))
                 {
-                    MessageBox.Show(this, "Build termine mais aucun fichier .wapt n'a pu etre determine pour l'upload.", "Build + Upload", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    var noTargetMessage = "Build termine mais aucun fichier .wapt n'a pu etre determine pour l'upload.";
+                    await RegisterHistoryAsync("BuildAndUploadFailed", false, item.PackageFolder, item.PackageId, noTargetMessage, null, item.PackageInfo.Version, item.PackageInfo.Version, null, _currentValidationResult?.VerdictLabel).ConfigureAwait(true);
+                    MessageBox.Show(this, noTargetMessage, "Build + Upload", MessageBoxButtons.OK, MessageBoxIcon.Information);
                     return;
                 }
 
-                await ExecuteUploadAsync(uploadTarget, executionContext).ConfigureAwait(true);
+                var uploadSelectionText = BuildUploadSelectionText(uploadSelection.ExpectedName, uploadSelection.CandidateName, uploadTarget);
+                AppendLog(uploadSelectionText);
+                await RegisterHistoryAsync("BuildAndUploadUploadPrepared", true, item.PackageFolder, item.PackageId, $"Upload prepare avec: {uploadTarget}", null, item.PackageInfo.Version, item.PackageInfo.Version, uploadTarget, _currentValidationResult?.VerdictLabel).ConfigureAwait(true);
+
+                var uploadCompleted = await ExecuteUploadAsync(uploadTarget, executionContext).ConfigureAwait(true);
+
+                if (uploadCompleted)
+                {
+                    await RegisterHistoryAsync("BuildAndUploadUploadSucceeded", true, item.PackageFolder, item.PackageId, $"Build + Upload termine. Package: {item.PackageId}, Version: {item.PackageInfo.Version}, .wapt: {uploadTarget}", null, item.PackageInfo.Version, item.PackageInfo.Version, uploadTarget, _currentValidationResult?.VerdictLabel).ConfigureAwait(true);
+                    AppendLog($"Build + Upload reussi: {uploadTarget}");
+                }
+                else
+                {
+                    await RegisterHistoryAsync("BuildAndUploadFailed", false, item.PackageFolder, item.PackageId, $"Build + Upload: l'upload n'a pas abouti. .wapt: {uploadTarget}", null, item.PackageInfo.Version, item.PackageInfo.Version, uploadTarget, _currentValidationResult?.VerdictLabel).ConfigureAwait(true);
+                }
             }
             finally
             {
@@ -853,6 +1066,17 @@ public sealed class MainForm : Form
         if (sanitizedResult.RequiresExternalManualWorkflow)
         {
             return await PrepareAndRunManualWorkflowAsync(actionType, item, sanitizedResult, actionMessage).ConfigureAwait(true);
+        }
+
+        if (sanitizedResult.IsAuthenticationFailure)
+        {
+            var authMessage = string.IsNullOrWhiteSpace(sanitizedResult.StandardError)
+                ? "Authentification echouee. Verifiez vos identifiants et reessayez."
+                : sanitizedResult.StandardError;
+            MessageBox.Show(this, authMessage, $"{actionType} - Erreur d'authentification", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            await RegisterHistoryAsync($"{actionType}AuthFailed", false, item.PackageFolder, item.PackageId, authMessage, sanitizedResult, item.PackageInfo.Version, item.PackageInfo.Version, artifactPath, _currentValidationResult?.VerdictLabel).ConfigureAwait(true);
+            await RefreshWaptStatusAsync().ConfigureAwait(true);
+            return new ActionHandlingOutcome(false, null);
         }
 
         await RegisterHistoryAsync(BuildHistoryActionType(actionType, sanitizedResult), sanitizedResult.IsSuccess || sanitizedResult.IsDryRun, item.PackageFolder, item.PackageId, actionMessage, sanitizedResult, item.PackageInfo.Version, item.PackageInfo.Version, artifactPath, _currentValidationResult?.VerdictLabel).ConfigureAwait(true);
@@ -1095,19 +1319,31 @@ public sealed class MainForm : Form
 
     private void ConfigureCatalogGrid()
     {
-        _catalogGrid.DefaultCellStyle.Font = new Font("Segoe UI", 9F);
-        _catalogGrid.ColumnHeadersDefaultCellStyle.Font = new Font("Segoe UI Semibold", 9F, FontStyle.Bold);
-        _catalogGrid.ColumnHeadersDefaultCellStyle.BackColor = Color.FromArgb(239, 243, 249);
+        _catalogGrid.DefaultCellStyle.Font = new Font("Segoe UI", 9.5F);
+        _catalogGrid.DefaultCellStyle.Padding = new Padding(10, 6, 10, 6);
+        _catalogGrid.DefaultCellStyle.SelectionBackColor = Color.FromArgb(219, 234, 254);
+        _catalogGrid.DefaultCellStyle.SelectionForeColor = HeadingColor;
+        _catalogGrid.AlternatingRowsDefaultCellStyle.BackColor = Color.FromArgb(249, 250, 252);
+        _catalogGrid.RowTemplate.Height = 38;
+        _catalogGrid.CellBorderStyle = DataGridViewCellBorderStyle.SingleHorizontal;
+        _catalogGrid.GridColor = Color.FromArgb(238, 241, 246);
+        _catalogGrid.ColumnHeadersHeight = 42;
+        _catalogGrid.ColumnHeadersBorderStyle = DataGridViewHeaderBorderStyle.None;
+        _catalogGrid.ColumnHeadersDefaultCellStyle.Font = new Font("Segoe UI", 9F);
+        _catalogGrid.ColumnHeadersDefaultCellStyle.BackColor = SurfaceColor;
+        _catalogGrid.ColumnHeadersDefaultCellStyle.ForeColor = SubtleColor;
+        _catalogGrid.ColumnHeadersDefaultCellStyle.Padding = new Padding(10, 8, 10, 8);
         _catalogGrid.EnableHeadersVisualStyles = false;
         _catalogGrid.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill;
-        _catalogGrid.Columns.Add(new DataGridViewTextBoxColumn { DataPropertyName = nameof(PackageCatalogItem.PackageId), HeaderText = "Package ID", FillWeight = 18 });
-        _catalogGrid.Columns.Add(new DataGridViewTextBoxColumn { DataPropertyName = nameof(PackageCatalogItem.VisibleName), HeaderText = "Nom", FillWeight = 19 });
+        _catalogGrid.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.DisableResizing;
+        _catalogGrid.Columns.Add(new DataGridViewTextBoxColumn { DataPropertyName = nameof(PackageCatalogItem.PackageId), HeaderText = "Package ID", FillWeight = 16 });
+        _catalogGrid.Columns.Add(new DataGridViewTextBoxColumn { DataPropertyName = nameof(PackageCatalogItem.VisibleName), HeaderText = "Nom", FillWeight = 22 });
         _catalogGrid.Columns.Add(new DataGridViewTextBoxColumn { DataPropertyName = nameof(PackageCatalogItem.Version), HeaderText = "Version", FillWeight = 10 });
         _catalogGrid.Columns.Add(new DataGridViewTextBoxColumn { DataPropertyName = nameof(PackageCatalogItem.Category), HeaderText = "Type", FillWeight = 8 });
-        _catalogGrid.Columns.Add(new DataGridViewTextBoxColumn { DataPropertyName = nameof(PackageCatalogItem.Maturity), HeaderText = "Maturite", FillWeight = 9 });
-        _catalogGrid.Columns.Add(new DataGridViewTextBoxColumn { DataPropertyName = nameof(PackageCatalogItem.ReadinessLabel), HeaderText = "Readiness", FillWeight = 16 });
-        _catalogGrid.Columns.Add(new DataGridViewTextBoxColumn { DataPropertyName = nameof(PackageCatalogItem.LastModifiedUtc), HeaderText = "Derniere modif", FillWeight = 12, DefaultCellStyle = new DataGridViewCellStyle { Format = "g" } });
-        _catalogGrid.Columns.Add(new DataGridViewTextBoxColumn { DataPropertyName = nameof(PackageCatalogItem.PackageFolder), HeaderText = "Dossier", FillWeight = 25 });
+        _catalogGrid.Columns.Add(new DataGridViewTextBoxColumn { DataPropertyName = nameof(PackageCatalogItem.Maturity), HeaderText = "Maturite", FillWeight = 8 });
+        _catalogGrid.Columns.Add(new DataGridViewTextBoxColumn { DataPropertyName = nameof(PackageCatalogItem.ReadinessLabel), HeaderText = "Etat", FillWeight = 12 });
+        _catalogGrid.Columns.Add(new DataGridViewTextBoxColumn { DataPropertyName = nameof(PackageCatalogItem.LastModifiedUtc), HeaderText = "Modifie le", FillWeight = 12, DefaultCellStyle = new DataGridViewCellStyle { Format = "g" } });
+        _catalogGrid.Columns.Add(new DataGridViewTextBoxColumn { DataPropertyName = nameof(PackageCatalogItem.PackageFolder), HeaderText = "Dossier", FillWeight = 12 });
         _catalogGrid.CellFormatting += (_, eventArgs) =>
         {
             if (_catalogGrid.Columns[eventArgs.ColumnIndex].DataPropertyName == nameof(PackageCatalogItem.LastModifiedUtc) && eventArgs.Value is DateTime date)
@@ -1115,22 +1351,49 @@ public sealed class MainForm : Form
                 eventArgs.Value = date.ToLocalTime().ToString("yyyy-MM-dd HH:mm");
                 eventArgs.FormattingApplied = true;
             }
+
+            if (_catalogGrid.Columns[eventArgs.ColumnIndex].DataPropertyName == nameof(PackageCatalogItem.ReadinessLabel) && eventArgs.RowIndex >= 0)
+            {
+                if (_catalogGrid.Rows[eventArgs.RowIndex].DataBoundItem is PackageCatalogItem catalogItem)
+                {
+                    var (bg, fg) = catalogItem.ReadinessVerdict switch
+                    {
+                        ReadinessVerdict.ReadyForBuildUpload => (Color.FromArgb(220, 252, 231), ReadyColor),
+                        ReadinessVerdict.ReadyWithWarnings => (Color.FromArgb(254, 243, 199), WarningColor),
+                        _ => (Color.FromArgb(254, 226, 226), BlockedColor)
+                    };
+                    eventArgs.CellStyle!.BackColor = bg;
+                    eventArgs.CellStyle.ForeColor = fg;
+                    eventArgs.CellStyle.SelectionBackColor = bg;
+                    eventArgs.CellStyle.SelectionForeColor = fg;
+                    eventArgs.CellStyle.Font = new Font("Segoe UI Semibold", 9F, FontStyle.Bold);
+                }
+            }
         };
     }
 
     private void ConfigureHistoryGrid()
     {
-        _historyGrid.DefaultCellStyle.Font = new Font("Segoe UI", 8.75F);
+        _historyGrid.DefaultCellStyle.Font = new Font("Segoe UI", 9F);
+        _historyGrid.DefaultCellStyle.Padding = new Padding(6, 3, 6, 3);
+        _historyGrid.DefaultCellStyle.SelectionBackColor = Color.FromArgb(219, 234, 254);
+        _historyGrid.DefaultCellStyle.SelectionForeColor = HeadingColor;
+        _historyGrid.AlternatingRowsDefaultCellStyle.BackColor = Color.FromArgb(249, 250, 252);
+        _historyGrid.RowTemplate.Height = 32;
+        _historyGrid.GridColor = Color.FromArgb(241, 243, 247);
+        _historyGrid.ColumnHeadersHeight = 36;
         _historyGrid.ColumnHeadersDefaultCellStyle.Font = new Font("Segoe UI Semibold", 9F, FontStyle.Bold);
-        _historyGrid.ColumnHeadersDefaultCellStyle.BackColor = Color.FromArgb(239, 243, 249);
+        _historyGrid.ColumnHeadersDefaultCellStyle.BackColor = Color.FromArgb(248, 249, 252);
+        _historyGrid.ColumnHeadersDefaultCellStyle.ForeColor = InfoColor;
         _historyGrid.EnableHeadersVisualStyles = false;
+        _historyGrid.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.DisableResizing;
         _historyGrid.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill;
         _historyGrid.Columns.Add(new DataGridViewTextBoxColumn { DataPropertyName = nameof(HistoryEntry.Timestamp), HeaderText = "Date", FillWeight = 14, DefaultCellStyle = new DataGridViewCellStyle { Format = "g" } });
-        _historyGrid.Columns.Add(new DataGridViewTextBoxColumn { DataPropertyName = nameof(HistoryEntry.ActionType), HeaderText = "Action", FillWeight = 10 });
+        _historyGrid.Columns.Add(new DataGridViewTextBoxColumn { DataPropertyName = nameof(HistoryEntry.ActionType), HeaderText = "Etape", FillWeight = 10 });
         _historyGrid.Columns.Add(new DataGridViewCheckBoxColumn { DataPropertyName = nameof(HistoryEntry.Success), HeaderText = "OK", FillWeight = 5 });
-        _historyGrid.Columns.Add(new DataGridViewTextBoxColumn { DataPropertyName = nameof(HistoryEntry.ReadinessVerdict), HeaderText = "Readiness", FillWeight = 12 });
+        _historyGrid.Columns.Add(new DataGridViewTextBoxColumn { DataPropertyName = nameof(HistoryEntry.ReadinessVerdict), HeaderText = "Etat", FillWeight = 12 });
         _historyGrid.Columns.Add(new DataGridViewTextBoxColumn { DataPropertyName = nameof(HistoryEntry.WaptArtifactPath), HeaderText = ".wapt", FillWeight = 18 });
-        _historyGrid.Columns.Add(new DataGridViewTextBoxColumn { DataPropertyName = nameof(HistoryEntry.Message), HeaderText = "Message", FillWeight = 41 });
+        _historyGrid.Columns.Add(new DataGridViewTextBoxColumn { DataPropertyName = nameof(HistoryEntry.Message), HeaderText = "Resume", FillWeight = 41 });
     }
 
     private void ReplaceCatalogItem(PackageCatalogItem originalItem, ValidationResult validationResult, PackageCatalogItem? replacement = null)
@@ -1212,9 +1475,20 @@ public sealed class MainForm : Form
 
     private void UpdateReadinessBadge(ReadinessVerdict verdict, string label)
     {
-        _readinessBadgeLabel.Text = string.IsNullOrWhiteSpace(label) ? "Aucun verdict" : label;
+        var shortLabel = verdict switch
+        {
+            ReadinessVerdict.ReadyForBuildUpload => "PRET",
+            ReadinessVerdict.ReadyWithWarnings => "ATTENTION",
+            _ => string.IsNullOrWhiteSpace(label) || label == "EN ATTENTE" ? "EN ATTENTE" : "BLOQUE"
+        };
+        _readinessBadgeLabel.Text = shortLabel;
         _readinessBadgeLabel.ForeColor = Color.White;
-        _readinessBadgeLabel.BackColor = GetVerdictColor(verdict);
+        _readinessBadgeLabel.BackColor = verdict switch
+        {
+            ReadinessVerdict.ReadyForBuildUpload => ReadyColor,
+            ReadinessVerdict.ReadyWithWarnings => WarningColor,
+            _ => string.IsNullOrWhiteSpace(label) || label == "EN ATTENTE" ? SubtleColor : BlockedColor
+        };
     }
 
     private static Color ResolveResultColor(CommandExecutionResult result)
@@ -1222,6 +1496,11 @@ public sealed class MainForm : Form
         if (result.IsDryRun)
         {
             return AccentColor;
+        }
+
+        if (result.IsAuthenticationFailure)
+        {
+            return BlockedColor;
         }
 
         if (result.RequiresExternalManualWorkflow || result.ManualFallbackRecommended)
@@ -1249,6 +1528,11 @@ public sealed class MainForm : Form
             return $"{actionType}: action manuelle requise.";
         }
 
+        if (result.IsAuthenticationFailure)
+        {
+            return $"{actionType}: echec d'authentification. {result.StandardError}";
+        }
+
         if (result.ManualFallbackRecommended)
         {
             return $"{actionType}: fallback manuel recommande.";
@@ -1269,6 +1553,26 @@ public sealed class MainForm : Form
 
     private static string BuildHistoryActionType(string actionType, CommandExecutionResult result)
         => result.IsDryRun ? $"{actionType}DryRun" : result.WasInteractiveExecutionAttempted ? $"{actionType}InteractiveExecuted" : actionType;
+
+    private static string? ExtractWaptFilePathFromOutput(string? output)
+    {
+        if (string.IsNullOrWhiteSpace(output))
+        {
+            return null;
+        }
+
+        var match = System.Text.RegularExpressions.Regex.Match(output, @"(?<path>[A-Za-z]:\\[^\r\n""]*\.wapt)\b", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        if (match.Success)
+        {
+            var path = match.Groups["path"].Value.TrimEnd();
+            if (File.Exists(path))
+            {
+                return path;
+            }
+        }
+
+        return null;
+    }
 
     private static bool SupportsManualWorkflow(string actionType)
         => string.Equals(actionType, "Build", StringComparison.OrdinalIgnoreCase)
@@ -1310,54 +1614,91 @@ public sealed class MainForm : Form
         return form.ShowDialog(this) == DialogResult.OK ? form.ExecutionContext : null;
     }
 
-    private string? ResolveUploadWaptFilePath(string packageFolder, string? explicitWaptFilePath, bool allowExpectedPathWhenMissing)
+    private sealed record UploadSelection(string? ResolvedPath, string? ExpectedName, string? CandidateName, bool ExactMatch);
+
+    private static bool IsCoherentWaptForPackage(string fileName, string? packageId, string? version)
     {
+        if (string.IsNullOrWhiteSpace(packageId) || string.IsNullOrWhiteSpace(version))
+        {
+            return false;
+        }
+
+        return fileName.StartsWith(packageId, StringComparison.OrdinalIgnoreCase)
+            && fileName.Contains(version, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string BuildUploadSelectionText(string? expectedName, string? candidateName, string resolvedPath)
+    {
+        var effectiveCandidate = string.IsNullOrWhiteSpace(candidateName) ? "non detecte" : candidateName;
+        var effectiveExpected = string.IsNullOrWhiteSpace(expectedName) ? "non defini" : expectedName;
+        return $".wapt attendu: {effectiveExpected}\r\nFichier trouve: {effectiveCandidate}\r\nFichier utilise: {Path.GetFileName(resolvedPath)}";
+    }
+
+    private UploadSelection ResolveUploadWaptSelection(string packageFolder, string? explicitWaptFilePath, bool allowExpectedPathWhenMissing)
+    {
+        var item = _selectedCatalogItem;
+        var expectedName = item?.PackageInfo.ExpectedWaptFileName;
+        var packageId = item?.PackageInfo.PackageName ?? item?.PackageId;
+        var version = item?.PackageInfo.Version ?? item?.Version;
+
         if (!string.IsNullOrWhiteSpace(explicitWaptFilePath) && (File.Exists(explicitWaptFilePath) || allowExpectedPathWhenMissing))
         {
-            return explicitWaptFilePath;
+            var candidateNameFromExplicit = Path.GetFileName(explicitWaptFilePath);
+            var exactFromExplicit = !string.IsNullOrWhiteSpace(expectedName) && string.Equals(candidateNameFromExplicit, expectedName, StringComparison.OrdinalIgnoreCase);
+            return new UploadSelection(explicitWaptFilePath, expectedName, candidateNameFromExplicit, exactFromExplicit);
         }
 
-        var expected = ResolveExpectedWaptFilePath(packageFolder, allowExpectedPathWhenMissing);
-        if (!string.IsNullOrWhiteSpace(expected))
+        var parentDirectory = Path.GetDirectoryName(packageFolder);
+        var searchDirectories = new[] { packageFolder, parentDirectory }
+            .Where(d => !string.IsNullOrWhiteSpace(d) && Directory.Exists(d))
+            .ToArray();
+
+        var candidates = searchDirectories
+            .SelectMany(d => Directory.EnumerateFiles(d!, "*.wapt", SearchOption.TopDirectoryOnly))
+            .ToArray();
+
+        var selectedPath = WaptNaming.SelectBestWaptCandidate(candidates, expectedName, packageId, version);
+        var candidateName = string.IsNullOrWhiteSpace(selectedPath) ? null : Path.GetFileName(selectedPath);
+        var exactMatch = !string.IsNullOrWhiteSpace(expectedName)
+            && string.Equals(candidateName, expectedName, StringComparison.OrdinalIgnoreCase);
+
+        if (string.IsNullOrWhiteSpace(selectedPath) && !string.IsNullOrWhiteSpace(expectedName) && allowExpectedPathWhenMissing)
         {
-            return expected;
+            selectedPath = Path.Combine(packageFolder, expectedName);
+            candidateName = expectedName;
         }
 
-        using var dialog = new OpenFileDialog
-        {
-            Filter = "Paquets WAPT (*.wapt)|*.wapt|Tous les fichiers (*.*)|*.*",
-            Title = "Selectionner le paquet .wapt a uploader",
-            InitialDirectory = Directory.Exists(packageFolder) ? packageFolder : Environment.GetFolderPath(Environment.SpecialFolder.Desktop)
-        };
-
-        return dialog.ShowDialog(this) == DialogResult.OK ? dialog.FileName : null;
+        return new UploadSelection(selectedPath, expectedName, candidateName, exactMatch);
     }
 
     private string? ResolveExpectedWaptFilePath(string packageFolder, bool allowExpectedPathWhenMissing)
     {
         var item = _selectedCatalogItem;
         var expectedName = item?.PackageInfo.ExpectedWaptFileName;
-        var candidate = Directory.Exists(packageFolder)
-            ? Directory.EnumerateFiles(packageFolder, "*.wapt", SearchOption.AllDirectories).OrderByDescending(File.GetLastWriteTimeUtc).FirstOrDefault()
-            : null;
+        var packageId = item?.PackageInfo.PackageName ?? item?.PackageId;
+        var version = item?.PackageInfo.Version;
+        var parentDirectory = Path.GetDirectoryName(packageFolder);
 
-        if (!string.IsNullOrWhiteSpace(expectedName))
+        var searchDirectories = new[] { packageFolder, parentDirectory }
+            .Where(d => !string.IsNullOrWhiteSpace(d) && Directory.Exists(d))
+            .ToArray();
+
+        var candidates = searchDirectories
+            .SelectMany(d => Directory.EnumerateFiles(d!, "*.wapt", SearchOption.TopDirectoryOnly))
+            .ToArray();
+
+        var selected = WaptNaming.SelectBestWaptCandidate(candidates, expectedName, packageId, version);
+        if (!string.IsNullOrWhiteSpace(selected))
         {
-            var expectedExisting = Directory.Exists(packageFolder)
-                ? Directory.EnumerateFiles(packageFolder, expectedName, SearchOption.AllDirectories).FirstOrDefault()
-                : null;
-            if (!string.IsNullOrWhiteSpace(expectedExisting))
-            {
-                return expectedExisting;
-            }
-
-            if (allowExpectedPathWhenMissing)
-            {
-                return Path.Combine(packageFolder, expectedName);
-            }
+            return selected;
         }
 
-        return candidate;
+        if (!string.IsNullOrWhiteSpace(expectedName) && allowExpectedPathWhenMissing)
+        {
+            return Path.Combine(packageFolder, expectedName);
+        }
+
+        return null;
     }
 
     private PackageCatalogItem RequireSelectedPackage()
@@ -1460,7 +1801,7 @@ public sealed class MainForm : Form
     private void PulseSelectionAccent()
     {
         _pulseState = !_pulseState;
-        _catalogGrid.GridColor = _pulseState ? Color.FromArgb(230, 235, 243) : BorderColor;
+        _catalogGrid.GridColor = _pulseState ? Color.FromArgb(233, 237, 244) : Color.FromArgb(241, 243, 247);
     }
 
     private static Panel CreateCardPanel()
@@ -1468,14 +1809,22 @@ public sealed class MainForm : Form
         {
             Dock = DockStyle.Fill,
             BackColor = PanelColor,
-            Margin = new Padding(0, 0, 0, 10),
-            BorderStyle = BorderStyle.FixedSingle
+            Margin = new Padding(0, 0, 0, 8),
+            Padding = new Padding(1),
+            BorderStyle = BorderStyle.None
         };
 
     private static Control CreateSectionCard(string title, string subtitle, Control content)
     {
         var card = CreateCardPanel();
-        card.Padding = new Padding(14);
+        card.Padding = new Padding(18);
+        card.Paint += (sender, e) =>
+        {
+            var panel = (Panel)sender!;
+            using var pen = new Pen(SurfaceDarkColor, 1);
+            e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+            e.Graphics.DrawRectangle(pen, 0, 0, panel.Width - 1, panel.Height - 1);
+        };
 
         var layout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 2, BackColor = PanelColor };
         layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
@@ -1488,25 +1837,286 @@ public sealed class MainForm : Form
 
     private static Control CreateSectionHeader(string title, string subtitle)
     {
-        var panel = new TableLayoutPanel { Dock = DockStyle.Top, ColumnCount = 1, AutoSize = true, BackColor = PanelColor, Margin = new Padding(0, 0, 0, 10) };
-        panel.Controls.Add(new Label { Text = title, AutoSize = true, Font = new Font("Segoe UI Semibold", 11.5F, FontStyle.Bold), ForeColor = Color.FromArgb(33, 45, 69), Margin = new Padding(0, 0, 0, 2) }, 0, 0);
-        panel.Controls.Add(new Label { Text = subtitle, AutoSize = true, ForeColor = InfoColor }, 0, 1);
+        var panel = new TableLayoutPanel { Dock = DockStyle.Top, ColumnCount = 1, AutoSize = true, BackColor = PanelColor, Margin = new Padding(0, 0, 0, 14) };
+        panel.Controls.Add(new Label { Text = title, AutoSize = true, Font = new Font("Segoe UI Semibold", 13F, FontStyle.Bold), ForeColor = HeadingColor, Margin = new Padding(0, 0, 0, 3) }, 0, 0);
+        panel.Controls.Add(new Label { Text = subtitle, AutoSize = true, ForeColor = SubtleColor, Font = new Font("Segoe UI", 9F) }, 0, 1);
         return panel;
     }
 
-    private void StyleActionButtons()
+    private void StyleActionButtons(Button? recommendedButton = null)
     {
         foreach (var button in new[] { _scanCatalogButton, _analyzeButton, _replaceInstallerButton, _validateButton, _buildButton, _signButton, _uploadButton, _buildAndUploadButton, _auditButton, _uninstallButton, _restoreBackupButton, _openBackupFolderButton, _manualWorkflowButton, _saveReportButton, _historyDetailsButton, _settingsButton, _browseCatalogButton })
         {
             button.FlatStyle = FlatStyle.Flat;
-            button.FlatAppearance.BorderColor = BorderColor;
-            button.FlatAppearance.MouseOverBackColor = Color.FromArgb(239, 244, 251);
-            button.FlatAppearance.MouseDownBackColor = Color.FromArgb(227, 236, 248);
-            button.BackColor = button == _scanCatalogButton || button == _validateButton || button == _buildButton || button == _uploadButton ? AccentColor : PanelColor;
-            button.ForeColor = button.BackColor == AccentColor ? Color.White : Color.FromArgb(44, 56, 76);
-            button.Padding = new Padding(10, 6, 10, 6);
-            button.Margin = new Padding(0, 0, 8, 8);
+            button.Font = new Font("Segoe UI", 9.5F);
+            var isPrimary = button == _scanCatalogButton || button == _validateButton || button == _buildButton || button == _uploadButton;
+            var isRecommended = button == recommendedButton;
+            if (isRecommended)
+            {
+                button.BackColor = RecommendedColor;
+                button.ForeColor = Color.White;
+                button.FlatAppearance.BorderSize = 0;
+                button.FlatAppearance.BorderColor = RecommendedColor;
+                button.FlatAppearance.MouseOverBackColor = Color.FromArgb(18, 108, 78);
+                button.FlatAppearance.MouseDownBackColor = Color.FromArgb(14, 88, 64);
+                button.Font = new Font("Segoe UI Semibold", 9.5F, FontStyle.Bold);
+            }
+            else if (isPrimary)
+            {
+                button.BackColor = AccentColor;
+                button.ForeColor = Color.White;
+                button.FlatAppearance.BorderSize = 0;
+                button.FlatAppearance.BorderColor = AccentColor;
+                button.FlatAppearance.MouseOverBackColor = Color.FromArgb(30, 82, 158);
+                button.FlatAppearance.MouseDownBackColor = Color.FromArgb(24, 66, 130);
+            }
+            else
+            {
+                button.BackColor = PanelColor;
+                button.ForeColor = HeadingColor;
+                button.FlatAppearance.BorderSize = 1;
+                button.FlatAppearance.BorderColor = BorderColor;
+                button.FlatAppearance.MouseOverBackColor = Color.FromArgb(243, 246, 251);
+                button.FlatAppearance.MouseDownBackColor = Color.FromArgb(225, 233, 246);
+            }
+            button.Padding = new Padding(14, 8, 14, 8);
+            button.Margin = new Padding(0, 0, 10, 10);
         }
+    }
+
+    private Control BuildPackageSummaryCard()
+    {
+        var content = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 3, BackColor = PanelColor };
+        content.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        content.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        content.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        content.Controls.Add(_selectedPackageLabel, 0, 0);
+        content.Controls.Add(_selectedPackageMetaLabel, 0, 1);
+        _packageSummaryTextBox.Font = new Font("Segoe UI", 9.5F);
+        content.Controls.Add(_packageSummaryTextBox, 0, 2);
+        return CreateSectionCard("Paquet selectionne", "Informations essentielles du paquet.", content);
+    }
+
+    private Control BuildAssistantCard()
+    {
+        var content = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 3, BackColor = PanelColor };
+        content.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        content.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        content.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+
+        var topRow = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, BackColor = PanelColor, Margin = new Padding(0, 0, 0, 10) };
+        topRow.Controls.Add(_selectionStateLabel);
+
+        var nextStepPanel = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, AutoSize = true, BackColor = PanelColor, Margin = new Padding(0, 0, 0, 8) };
+        nextStepPanel.Controls.Add(_nextStepTitleLabel, 0, 0);
+        nextStepPanel.Controls.Add(_nextStepDescriptionLabel, 0, 1);
+
+        _assistantTextBox.Font = new Font("Segoe UI", 9.5F);
+
+        content.Controls.Add(topRow, 0, 0);
+        content.Controls.Add(nextStepPanel, 0, 1);
+        content.Controls.Add(_assistantTextBox, 0, 2);
+        return CreateSectionCard("Etat et prochaine action", "Comprenez si le paquet peut avancer et pourquoi.", content);
+    }
+
+    private Control BuildActionFamiliesCard()
+    {
+        var actions = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 4, BackColor = PanelColor };
+        actions.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25));
+        actions.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25));
+        actions.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25));
+        actions.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25));
+
+        actions.Controls.Add(CreateActionFamilyCard("Preparer", "Relire et remplacer l'installeur.", _analyzeButton, _replaceInstallerButton), 0, 0);
+        actions.Controls.Add(CreateActionFamilyCard("Verifier", "Valider avant publication.", _validateButton, _auditButton), 1, 0);
+        actions.Controls.Add(CreateActionFamilyCard("Publier", "Construire, signer et envoyer.", _buildButton, _signButton, _uploadButton, _buildAndUploadButton), 2, 0);
+        actions.Controls.Add(CreateActionFamilyCard("Maintenance", "Rattrapage et sauvegardes.", _manualWorkflowButton, _restoreBackupButton, _openBackupFolderButton, _saveReportButton, _historyDetailsButton, _uninstallButton), 3, 0);
+
+        return CreateSectionCard("Actions", "Regroupees par famille.", actions);
+    }
+
+    private static Control CreateActionFamilyCard(string title, string description, params Button[] buttons)
+    {
+        var panel = new Panel
+        {
+            Dock = DockStyle.Fill,
+            BackColor = CardHoverColor,
+            BorderStyle = BorderStyle.None,
+            Margin = new Padding(0, 0, 8, 0),
+            Padding = new Padding(12, 12, 12, 8)
+        };
+
+        var layout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 3, BackColor = panel.BackColor };
+        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+
+        layout.Controls.Add(new Label { Text = title, AutoSize = true, Font = new Font("Segoe UI Semibold", 10F, FontStyle.Bold), ForeColor = HeadingColor, Margin = new Padding(0, 0, 0, 2) }, 0, 0);
+        layout.Controls.Add(new Label { Text = description, AutoSize = true, MaximumSize = new Size(250, 0), ForeColor = SubtleColor, Font = new Font("Segoe UI", 8.5F), Margin = new Padding(0, 0, 0, 6) }, 0, 1);
+
+        var buttonsPanel = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoScroll = true, WrapContents = true, BackColor = panel.BackColor, Padding = new Padding(0) };
+        foreach (var button in buttons)
+        {
+            button.Margin = new Padding(0, 0, 4, 4);
+            button.Padding = new Padding(8, 4, 8, 4);
+            button.Font = new Font("Segoe UI", 8.5F);
+        }
+        buttonsPanel.Controls.AddRange(buttons);
+        layout.Controls.Add(buttonsPanel, 0, 2);
+
+        panel.Controls.Add(layout);
+        return panel;
+    }
+
+    private Control BuildActivityArea()
+    {
+        _activityTabControl.DrawMode = TabDrawMode.OwnerDrawFixed;
+        _activityTabControl.ItemSize = new Size(120, 34);
+        _activityTabControl.SizeMode = TabSizeMode.Fixed;
+        _activityTabControl.DrawItem += (sender, e) =>
+        {
+            var tabControl = (TabControl)sender!;
+            var isSelected = e.Index == tabControl.SelectedIndex;
+            var tabPage = tabControl.TabPages[e.Index];
+            using var bgBrush = new SolidBrush(isSelected ? PanelColor : SurfaceColor);
+            e.Graphics.FillRectangle(bgBrush, e.Bounds);
+            using var textBrush = new SolidBrush(isSelected ? AccentColor : InfoColor);
+            using var font = new Font("Segoe UI Semibold", 9.5F, isSelected ? FontStyle.Bold : FontStyle.Regular);
+            var textSize = e.Graphics.MeasureString(tabPage.Text, font);
+            var textX = e.Bounds.X + (e.Bounds.Width - (int)textSize.Width) / 2;
+            var textY = e.Bounds.Y + (e.Bounds.Height - (int)textSize.Height) / 2;
+            e.Graphics.DrawString(tabPage.Text, font, textBrush, textX, textY);
+            if (isSelected)
+            {
+                using var accentPen = new Pen(AccentColor, 2);
+                e.Graphics.DrawLine(accentPen, e.Bounds.Left + 4, e.Bounds.Bottom - 1, e.Bounds.Right - 4, e.Bounds.Bottom - 1);
+            }
+        };
+
+        _activityTabControl.TabPages.Clear();
+        _activityTabControl.TabPages.Add(new TabPage("Journal") { BackColor = PanelColor, Padding = new Padding(12) });
+        _logsTextBox.Font = new Font("Consolas", 9.5F);
+        _activityTabControl.TabPages[0].Controls.Add(_logsTextBox);
+        _activityTabControl.TabPages.Add(new TabPage("Historique") { BackColor = PanelColor, Padding = new Padding(12) });
+        _activityTabControl.TabPages[1].Controls.Add(_historyGrid);
+        _activityTabControl.TabPages.Add(new TabPage("Details paquet") { BackColor = PanelColor, Padding = new Padding(12) });
+        _packageDetailsTextBox.Font = new Font("Segoe UI", 9.5F);
+        _activityTabControl.TabPages[2].Controls.Add(_packageDetailsTextBox);
+        _activityTabControl.TabPages.Add(new TabPage("Details readiness") { BackColor = PanelColor, Padding = new Padding(12) });
+        _readinessTextBox.Font = new Font("Segoe UI", 9.5F);
+        _activityTabControl.TabPages[3].Controls.Add(_readinessTextBox);
+
+        return CreateSectionCard("Journal et details", "Journal et historique en premier, details techniques dans les autres onglets.", _activityTabControl);
+    }
+
+    private static string BuildSelectionStateLabel(ValidationResult? validationResult)
+    {
+        if (validationResult is null)
+        {
+            return "A verifier";
+        }
+
+        return validationResult.Verdict switch
+        {
+            ReadinessVerdict.ReadyForBuildUpload => "Pret a avancer",
+            ReadinessVerdict.ReadyWithWarnings => "Pret avec vigilance",
+            _ => "Bloque"
+        };
+    }
+
+    private static string BuildPackageSummaryText(PackageCatalogItem item, ValidationResult? validationResult)
+    {
+        var builder = new StringBuilder();
+        builder.AppendLine($"Nom affiche: {item.VisibleName}");
+        builder.AppendLine($"Version: {(string.IsNullOrWhiteSpace(item.Version) ? "non detectee" : item.Version)}");
+        builder.AppendLine($"Type d'installeur: {item.Category.ToString().ToUpperInvariant()}");
+        builder.AppendLine($"Niveau de maturite: {item.Maturity}");
+        builder.AppendLine($"Derniere modification: {item.LastModifiedUtc.ToLocalTime():yyyy-MM-dd HH:mm}");
+        builder.AppendLine($"Installeur principal: {item.PrimaryInstallerName}");
+        builder.AppendLine($"Dossier: {item.PackageFolder}");
+
+        if (validationResult is not null)
+        {
+            builder.AppendLine();
+            builder.AppendLine($"Etat actuel: {validationResult.VerdictLabel}");
+            builder.AppendLine($"Resume: {validationResult.Summary}");
+        }
+
+        return builder.ToString();
+    }
+
+    private static string BuildAssistantText(ValidationResult? validationResult)
+    {
+        if (validationResult is null)
+        {
+            return "Aucune verification recente n'est disponible. Lancez d'abord 'Verifier le paquet' pour connaitre les blocages, les alertes et les actions possibles.";
+        }
+
+        var builder = new StringBuilder();
+        builder.AppendLine(validationResult.Summary);
+        builder.AppendLine();
+        builder.AppendLine($"Construire le .wapt: {(validationResult.BuildPossible ? "oui" : "non")}");
+        builder.AppendLine($"Envoyer au depot: {(validationResult.UploadPossible ? "oui" : "non")}");
+        builder.AppendLine($"Verifier sur un poste: {(validationResult.AuditPossible ? "oui" : "non")}");
+        builder.AppendLine($"Desinstaller du poste: {(validationResult.UninstallPossible ? "oui" : "non")}");
+
+        if (validationResult.Issues.Count > 0)
+        {
+            builder.AppendLine();
+            builder.AppendLine(validationResult.Verdict == ReadinessVerdict.Blocked ? "Points a corriger:" : "Points a surveiller:");
+            foreach (var issue in validationResult.Issues.Take(6))
+            {
+                builder.AppendLine($"- [{issue.Severity}] {issue.Message}");
+            }
+
+            if (validationResult.Issues.Count > 6)
+            {
+                builder.AppendLine("- Voir plus de details pour la liste complete.");
+            }
+        }
+
+        return builder.ToString();
+    }
+
+    private (string Title, string Description, Button? RecommendedButton) BuildNextStepGuidance(PackageCatalogItem? item, ValidationResult? validationResult)
+    {
+        if (item is null)
+        {
+            return ("Choisir un paquet", "Selectionnez un paquet dans le catalogue pour afficher un resume clair et les actions disponibles.", null);
+        }
+
+        if (validationResult is null)
+        {
+            return ("Verifier le paquet", "Commencez par verifier le paquet pour identifier les blocages et les operations autorisees.", _validateButton);
+        }
+
+        if (validationResult.Verdict == ReadinessVerdict.Blocked)
+        {
+            return ("Corriger les blocages", "Consultez les raisons affichees ci-dessous, corrigez le paquet si besoin, puis relancez 'Verifier le paquet'.", _validateButton);
+        }
+
+        var knownWaptFilePath = ResolveExpectedWaptFilePath(item.PackageFolder, allowExpectedPathWhenMissing: false);
+        if (validationResult.BuildPossible && string.IsNullOrWhiteSpace(knownWaptFilePath))
+        {
+            return ("Construire le .wapt", "Le paquet est suffisamment prepare pour une construction. Une fois le .wapt genere, l'envoi au depot sera possible.", _buildButton);
+        }
+
+        if (validationResult.UploadPossible)
+        {
+            return ("Envoyer au depot", "Le paquet peut etre envoye. Utilisez 'Envoyer au depot' ou 'Construire et envoyer' selon votre besoin.", _uploadButton);
+        }
+
+        if (validationResult.BuildPossible)
+        {
+            return ("Construire le .wapt", "Le build est autorise. Vous pourrez ensuite signer ou envoyer le paquet.", _buildButton);
+        }
+
+        if (validationResult.AuditPossible)
+        {
+            return ("Verifier sur un poste", "Le paquet ne peut pas encore etre publie, mais un audit sur poste reste disponible.", _auditButton);
+        }
+
+        return ("Verifier le paquet", "Le paquet a ete analyse, mais aucune suite automatique claire n'est disponible. Relancez une verification apres correction.", _validateButton);
     }
 
     private static void OpenFolder(string folderPath)

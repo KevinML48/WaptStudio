@@ -276,6 +276,21 @@ public sealed class WaptCommandService : IWaptCommandService
             {
                 return "Fichier .wapt non renseigne pour l'upload.";
             }
+
+            if (Directory.Exists(waptFilePath))
+            {
+                return "Chemin d'upload invalide: un fichier .wapt est requis, pas un dossier.";
+            }
+
+            if (!string.Equals(Path.GetExtension(waptFilePath), ".wapt", StringComparison.OrdinalIgnoreCase))
+            {
+                return "Chemin d'upload invalide: l'extension doit etre .wapt.";
+            }
+
+            if (!settings.DryRunEnabled && !File.Exists(waptFilePath))
+            {
+                return $"Fichier .wapt introuvable: {waptFilePath}";
+            }
         }
 
         if ((actionType == WaptActionType.Audit || actionType == WaptActionType.Uninstall) && string.IsNullOrWhiteSpace(template))
@@ -373,6 +388,9 @@ public sealed class WaptCommandService : IWaptCommandService
             return result;
         }
 
+        var combinedOutput = (result.StandardError + " " + result.StandardOutput).Trim();
+        var isAuthFailure = !result.IsSuccess && DetectAuthenticationFailure(combinedOutput);
+
         var interactiveResult = new CommandExecutionResult
         {
             FileName = result.FileName,
@@ -385,16 +403,91 @@ public sealed class WaptCommandService : IWaptCommandService
             IsSkipped = result.IsSkipped,
             IsConfigurationBlocked = result.IsConfigurationBlocked,
             WasInteractiveExecutionAttempted = true,
-            ManualFallbackRecommended = !result.IsSuccess,
+            IsAuthenticationFailure = isAuthFailure,
+            ManualFallbackRecommended = !result.IsSuccess && !isAuthFailure,
             StandardOutput = result.StandardOutput,
-            StandardError = !result.IsSuccess && string.IsNullOrWhiteSpace(result.StandardError)
-                ? CreateAutomationFailureMessage(actionType)
-                : AppendFallbackRecommendation(result.StandardError, actionType, result.IsSuccess),
+            StandardError = !result.IsSuccess
+                ? isAuthFailure
+                    ? BuildAuthenticationFailureMessage(combinedOutput, actionType)
+                    : string.IsNullOrWhiteSpace(result.StandardError)
+                        ? CreateAutomationFailureMessage(actionType)
+                        : AppendFallbackRecommendation(result.StandardError, actionType, result.IsSuccess)
+                : result.StandardError,
             StartedAt = result.StartedAt,
             Duration = result.Duration
         };
 
         return interactiveResult;
+    }
+
+    private static bool DetectAuthenticationFailure(string output)
+    {
+        if (string.IsNullOrWhiteSpace(output))
+        {
+            return false;
+        }
+
+        var patterns = new[]
+        {
+            "authentication on server failed",
+            "authentication required",
+            "authentication failed",
+            "login required",
+            "basic realm=",
+            "invalid password",
+            "wrong password",
+            "bad password",
+            "incorrect password",
+            "password incorrect",
+            "mot de passe",
+            "refused",
+            "denied",
+            "unauthorized",
+            "401",
+            "access denied",
+            "private key password",
+            "certificate password",
+            "decryption failed",
+            "could not decrypt",
+            "mauvais mot de passe",
+            "authentification echouee",
+            "authentification refusee",
+            "identifiants invalides"
+        };
+
+        var lowerOutput = output.ToLowerInvariant();
+        foreach (var pattern in patterns)
+        {
+            if (lowerOutput.Contains(pattern, StringComparison.Ordinal))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static string BuildAuthenticationFailureMessage(string combinedOutput, WaptActionType actionType)
+    {
+        var lowerOutput = combinedOutput.ToLowerInvariant();
+
+        if (lowerOutput.Contains("private key", StringComparison.Ordinal)
+            || lowerOutput.Contains("certificate", StringComparison.Ordinal)
+            || lowerOutput.Contains("decrypt", StringComparison.Ordinal)
+            || lowerOutput.Contains("certificat", StringComparison.Ordinal))
+        {
+            return "Mot de passe certificat invalide. Verifiez le mot de passe du certificat et reessayez.";
+        }
+
+        if (actionType == WaptActionType.Upload
+            || lowerOutput.Contains("server", StringComparison.Ordinal)
+            || lowerOutput.Contains("401", StringComparison.Ordinal)
+            || lowerOutput.Contains("login", StringComparison.Ordinal))
+        {
+            return "Authentification WAPT refusee. Verifiez le login et le mot de passe administrateur WAPT et reessayez.";
+        }
+
+        return "Authentification echouee. Verifiez vos identifiants et reessayez.";
     }
 
     private static string CreateAutomationFailureMessage(WaptActionType actionType)
@@ -424,7 +517,16 @@ public sealed class WaptCommandService : IWaptCommandService
             : error + Environment.NewLine + recommendation;
     }
 
-    private static string BuildExecutedCommand(string executablePath, string arguments) => $"{executablePath} {arguments}".Trim();
+    private static string BuildExecutedCommand(string executablePath, string arguments)
+    {
+        var needsQuoting = executablePath.Contains(' ') || executablePath.Contains('(');
+        if (needsQuoting)
+        {
+            return $"& \"{executablePath}\" {arguments}".Trim();
+        }
+
+        return $"{executablePath} {arguments}".Trim();
+    }
 
     private static CommandExecutionResult CreateDryRunResult(string executablePath, string arguments, string executedCommand, string workingDirectory) => new()
     {

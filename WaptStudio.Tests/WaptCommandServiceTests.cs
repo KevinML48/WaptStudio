@@ -115,14 +115,15 @@ public sealed class WaptCommandServiceTests
         });
         var service = new WaptCommandService(commandExecutionService, settingsService);
 
-        var result = await service.UploadPackageAsync(packageFolder: @"C:\Packages\Sample", waptFilePath: @"C:\Packages\Sample\sample.wapt");
+        var waptPath = @"C:\Packages\Sample\sample.wapt";
+        var result = await service.UploadPackageAsync(packageFolder: @"C:\Packages\Sample", waptFilePath: waptPath);
 
         Assert.True(result.IsDryRun);
         Assert.True(result.IsSuccess);
         Assert.False(result.IsConfigurationBlocked);
         Assert.False(commandExecutionService.WasCalled);
         Assert.Contains("upload-package", result.ExecutedCommand);
-        Assert.Contains("sample.wapt", result.ExecutedCommand);
+        Assert.Contains(Path.GetFileName(waptPath), result.ExecutedCommand);
     }
 
     [Fact]
@@ -281,13 +282,80 @@ public sealed class WaptCommandServiceTests
         });
         var service = new WaptCommandService(commandExecutionService, settingsService);
 
-        var result = await service.UploadPackageAsync(packageFolder: @"C:\Packages\Sample", waptFilePath: @"C:\Packages\Sample\sample.wapt");
+        var waptPath = Path.Combine(Path.GetTempPath(), $"waptstudio-test-{Guid.NewGuid():N}.wapt");
+        File.WriteAllText(waptPath, "content");
+
+        var result = await service.UploadPackageAsync(packageFolder: @"C:\Packages\Sample", waptFilePath: waptPath);
 
         Assert.False(result.IsDryRun);
         Assert.False(result.IsSuccess);
         Assert.True(result.RequiresExternalManualWorkflow);
         Assert.False(commandExecutionService.WasCalled);
         Assert.Contains("Upload authentifie", result.StandardError);
+    }
+
+    [Fact]
+    public async Task BuildPackageAsync_FormatsCommandForPowerShellWhenPathContainsSpaces()
+    {
+        var commandExecutionService = new TrackingCommandExecutionService();
+        var settingsService = new TestSettingsService(new AppSettings
+        {
+            WaptExecutablePath = @"C:\Program Files (x86)\wapt\wapt-get.exe",
+            BuildPackageArguments = "build-package {packageFolder}",
+            DryRunEnabled = true
+        });
+        var service = new WaptCommandService(commandExecutionService, settingsService);
+
+        var result = await service.BuildPackageAsync(@"C:\waptdev\monpaquet");
+
+        Assert.StartsWith("& \"", result.ExecutedCommand);
+        Assert.Contains(@"""C:\Program Files (x86)\wapt\wapt-get.exe""", result.ExecutedCommand);
+        Assert.Contains("build-package", result.ExecutedCommand);
+    }
+
+    [Fact]
+    public async Task UploadPackageAsync_FormatsCommandForPowerShellWhenPathContainsSpaces()
+    {
+        var commandExecutionService = new TrackingCommandExecutionService();
+        var settingsService = new TestSettingsService(new AppSettings
+        {
+            WaptExecutablePath = @"C:\Program Files (x86)\wapt\wapt-get.exe",
+            UploadPackageArguments = "upload-package {waptFilePath}",
+            EnableUpload = true,
+            DryRunEnabled = false
+        });
+        var service = new WaptCommandService(commandExecutionService, settingsService);
+
+        var waptPath = Path.Combine(Path.GetTempPath(), $"waptstudio-test-{Guid.NewGuid():N}.wapt");
+        File.WriteAllText(waptPath, "content");
+
+        var result = await service.UploadPackageAsync(
+            packageFolder: @"C:\Packages\Sample",
+            waptFilePath: waptPath);
+
+        Assert.True(result.RequiresExternalManualWorkflow);
+        Assert.StartsWith("& \"", result.ExecutedCommand);
+        Assert.Contains(@"""C:\Program Files (x86)\wapt\wapt-get.exe""", result.ExecutedCommand);
+        Assert.Contains("upload-package", result.ExecutedCommand);
+        Assert.Contains(Path.GetFileName(waptPath), result.ExecutedCommand);
+    }
+
+    [Fact]
+    public async Task BuildPackageAsync_DoesNotAddAmpersandWhenPathHasNoSpaces()
+    {
+        var commandExecutionService = new TrackingCommandExecutionService();
+        var settingsService = new TestSettingsService(new AppSettings
+        {
+            WaptExecutablePath = @"C:\WAPT\wapt-get.exe",
+            BuildPackageArguments = "build-package {packageFolder}",
+            DryRunEnabled = true
+        });
+        var service = new WaptCommandService(commandExecutionService, settingsService);
+
+        var result = await service.BuildPackageAsync(@"C:\Packages\Sample");
+
+        Assert.DoesNotContain("& \"", result.ExecutedCommand);
+        Assert.StartsWith(@"C:\WAPT\wapt-get.exe", result.ExecutedCommand);
     }
 
     [Fact]
@@ -303,9 +371,12 @@ public sealed class WaptCommandServiceTests
         });
         var service = new WaptCommandService(commandExecutionService, settingsService);
 
+        var waptPath = Path.Combine(Path.GetTempPath(), $"waptstudio-test-{Guid.NewGuid():N}.wapt");
+        File.WriteAllText(waptPath, "content");
+
         var result = await service.UploadPackageAsync(
             packageFolder: @"C:\Packages\Sample",
-            waptFilePath: @"C:\Packages\Sample\sample.wapt",
+            waptFilePath: waptPath,
             executionContext: new WaptExecutionContext { AdminUser = "admin-user", AdminPassword = "admin-password" });
 
         Assert.True(commandExecutionService.WasCalled);
@@ -314,6 +385,48 @@ public sealed class WaptCommandServiceTests
         Assert.DoesNotContain("repository", result.ExecutedCommand, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("admin-user", commandExecutionService.LastOptions?.StandardInputText ?? string.Empty);
         Assert.Contains("admin-password", commandExecutionService.LastOptions?.StandardInputText ?? string.Empty);
+    }
+
+    [Fact]
+    public async Task UploadPackageAsync_BlocksWhenWaptFileIsMissing()
+    {
+        var commandExecutionService = new TrackingCommandExecutionService();
+        var settingsService = new TestSettingsService(new AppSettings
+        {
+            WaptExecutablePath = "wapt-get.exe",
+            UploadPackageArguments = "upload-package {waptFilePath}",
+            EnableUpload = true,
+            DryRunEnabled = false
+        });
+        var service = new WaptCommandService(commandExecutionService, settingsService);
+
+        var result = await service.UploadPackageAsync(packageFolder: @"C:\\Packages\\Sample", waptFilePath: @"C:\\Packages\\Sample\\missing.wapt");
+
+        Assert.False(result.IsSuccess);
+        Assert.True(result.IsConfigurationBlocked);
+        Assert.Contains("introuvable", result.StandardError, StringComparison.OrdinalIgnoreCase);
+        Assert.False(commandExecutionService.WasCalled);
+    }
+
+    [Fact]
+    public async Task UploadPackageAsync_UsesExactWaptPathProvided()
+    {
+        var commandExecutionService = new TrackingCommandExecutionService();
+        var settingsService = new TestSettingsService(new AppSettings
+        {
+            WaptExecutablePath = "wapt-get.exe",
+            UploadPackageArguments = "upload-package {waptFilePath}",
+            EnableUpload = true,
+            DryRunEnabled = true
+        });
+        var service = new WaptCommandService(commandExecutionService, settingsService);
+
+        var result = await service.UploadPackageAsync(packageFolder: @"C:\\Packages\\Sample", waptFilePath: @"C:\\Artifacts\\sample_1.0.0.wapt");
+
+        Assert.True(result.IsDryRun);
+        Assert.True(result.IsSuccess);
+        Assert.Contains("sample_1.0.0.wapt", result.ExecutedCommand);
+        Assert.DoesNotContain("C:\\Packages\\Sample", result.ExecutedCommand, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -344,6 +457,109 @@ public sealed class WaptCommandServiceTests
         Assert.Contains("[REDACTED]", sanitized.StandardError);
     }
 
+    [Fact]
+    public async Task BuildPackageAsync_DetectsAuthenticationFailureWhenCertificatePasswordIsWrong()
+    {
+        var commandExecutionService = new FailingCommandExecutionService(
+            exitCode: 1,
+            standardError: "Error: could not decrypt private key, wrong password?");
+        var settingsService = new TestSettingsService(new AppSettings
+        {
+            WaptExecutablePath = "wapt-get.exe",
+            BuildPackageArguments = "build-package {packageFolder}",
+            DryRunEnabled = false
+        });
+        var service = new WaptCommandService(commandExecutionService, settingsService);
+
+        var result = await service.BuildPackageAsync(@"C:\Packages\Sample", new WaptExecutionContext { CertificatePassword = "wrong-password" });
+
+        Assert.True(commandExecutionService.WasCalled);
+        Assert.True(result.WasInteractiveExecutionAttempted);
+        Assert.True(result.IsAuthenticationFailure);
+        Assert.False(result.ManualFallbackRecommended);
+        Assert.False(result.IsSuccess);
+        Assert.Contains("certificat", result.StandardError, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task UploadPackageAsync_DetectsAuthenticationFailureWhenServerCredentialsAreWrong()
+    {
+        var commandExecutionService = new FailingCommandExecutionService(
+            exitCode: 1,
+            standardError: "Authentication on server failed: 401 Unauthorized");
+        var settingsService = new TestSettingsService(new AppSettings
+        {
+            WaptExecutablePath = "wapt-get.exe",
+            UploadPackageArguments = "upload-package {waptFilePath}",
+            EnableUpload = true,
+            DryRunEnabled = false
+        });
+        var service = new WaptCommandService(commandExecutionService, settingsService);
+
+        var waptPath = Path.Combine(Path.GetTempPath(), $"waptstudio-test-{Guid.NewGuid():N}.wapt");
+        File.WriteAllText(waptPath, "content");
+
+        var result = await service.UploadPackageAsync(
+            packageFolder: @"C:\Packages\Sample",
+            waptFilePath: waptPath,
+            executionContext: new WaptExecutionContext { AdminUser = "admin", AdminPassword = "wrong" });
+
+        Assert.True(commandExecutionService.WasCalled);
+        Assert.True(result.WasInteractiveExecutionAttempted);
+        Assert.True(result.IsAuthenticationFailure);
+        Assert.False(result.ManualFallbackRecommended);
+        Assert.False(result.IsSuccess);
+        Assert.Contains("WAPT", result.StandardError);
+    }
+
+    [Fact]
+    public async Task BuildPackageAsync_RecommendsManualFallbackForNonAuthFailure()
+    {
+        var commandExecutionService = new FailingCommandExecutionService(
+            exitCode: 1,
+            standardError: "Build failed: syntax error in setup.py");
+        var settingsService = new TestSettingsService(new AppSettings
+        {
+            WaptExecutablePath = "wapt-get.exe",
+            BuildPackageArguments = "build-package {packageFolder}",
+            DryRunEnabled = false
+        });
+        var service = new WaptCommandService(commandExecutionService, settingsService);
+
+        var result = await service.BuildPackageAsync(@"C:\Packages\Sample", new WaptExecutionContext { CertificatePassword = "secret" });
+
+        Assert.True(commandExecutionService.WasCalled);
+        Assert.True(result.WasInteractiveExecutionAttempted);
+        Assert.False(result.IsAuthenticationFailure);
+        Assert.True(result.ManualFallbackRecommended);
+        Assert.False(result.IsSuccess);
+    }
+
+    [Theory]
+    [InlineData("authentication on server failed")]
+    [InlineData("invalid password provided")]
+    [InlineData("Error 401 Unauthorized")]
+    [InlineData("access denied for user admin")]
+    [InlineData("could not decrypt private key")]
+    [InlineData("mauvais mot de passe du certificat")]
+    [InlineData("authentification echouee sur le serveur")]
+    public async Task BuildPackageAsync_DetectsVariousAuthenticationPatterns(string errorMessage)
+    {
+        var commandExecutionService = new FailingCommandExecutionService(exitCode: 1, standardError: errorMessage);
+        var settingsService = new TestSettingsService(new AppSettings
+        {
+            WaptExecutablePath = "wapt-get.exe",
+            BuildPackageArguments = "build-package {packageFolder}",
+            DryRunEnabled = false
+        });
+        var service = new WaptCommandService(commandExecutionService, settingsService);
+
+        var result = await service.BuildPackageAsync(@"C:\Packages\Sample", new WaptExecutionContext { CertificatePassword = "test" });
+
+        Assert.True(result.IsAuthenticationFailure, $"Pattern not detected: {errorMessage}");
+        Assert.False(result.ManualFallbackRecommended, $"Manual fallback should be false for auth failure: {errorMessage}");
+    }
+
     private sealed class TrackingCommandExecutionService : ICommandExecutionService
     {
         public bool WasCalled { get; private set; }
@@ -354,17 +570,56 @@ public sealed class WaptCommandServiceTests
         {
             WasCalled = true;
             LastOptions = options;
+            var needsQuoting = fileName.Contains(' ') || fileName.Contains('(');
+            var executedCommand = needsQuoting
+                ? $"& \"{fileName}\" {arguments}".Trim()
+                : $"{fileName} {arguments}".Trim();
             return Task.FromResult(new CommandExecutionResult
             {
                 FileName = fileName,
                 Arguments = arguments,
-                ExecutedCommand = $"{fileName} {arguments}".Trim(),
+                ExecutedCommand = executedCommand,
                 WorkingDirectory = workingDirectory,
                 ExitCode = 0,
                 StandardOutput = "ok",
                 StandardError = string.Empty,
                 StartedAt = DateTimeOffset.Now,
                 Duration = TimeSpan.Zero
+            });
+        }
+    }
+
+    private sealed class FailingCommandExecutionService : ICommandExecutionService
+    {
+        private readonly int _exitCode;
+        private readonly string _standardError;
+
+        public bool WasCalled { get; private set; }
+
+        public FailingCommandExecutionService(int exitCode, string standardError)
+        {
+            _exitCode = exitCode;
+            _standardError = standardError;
+        }
+
+        public Task<CommandExecutionResult> ExecuteAsync(string fileName, string arguments, string workingDirectory, int timeoutSeconds, CommandExecutionOptions? options = null, CancellationToken cancellationToken = default)
+        {
+            WasCalled = true;
+            var needsQuoting = fileName.Contains(' ') || fileName.Contains('(');
+            var executedCommand = needsQuoting
+                ? $"& \"{fileName}\" {arguments}".Trim()
+                : $"{fileName} {arguments}".Trim();
+            return Task.FromResult(new CommandExecutionResult
+            {
+                FileName = fileName,
+                Arguments = arguments,
+                ExecutedCommand = executedCommand,
+                WorkingDirectory = workingDirectory,
+                ExitCode = _exitCode,
+                StandardOutput = string.Empty,
+                StandardError = _standardError,
+                StartedAt = DateTimeOffset.Now,
+                Duration = TimeSpan.FromSeconds(1)
             });
         }
     }

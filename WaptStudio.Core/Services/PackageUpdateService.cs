@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using WaptStudio.Core.Configuration;
 using WaptStudio.Core.Models;
+using WaptStudio.Core.Utilities;
 using WaptStudio.Core.Services.Interfaces;
 
 namespace WaptStudio.Core.Services;
@@ -86,12 +87,16 @@ public sealed class PackageUpdateService : IPackageUpdateService
                 await File.WriteAllTextAsync(packageInfo.SetupPyPath, updatedContent, cancellationToken).ConfigureAwait(false);
                 result.UpdatedFiles.Add(packageInfo.SetupPyPath);
             }
+
+            var validatedContent = await File.ReadAllTextAsync(packageInfo.SetupPyPath, cancellationToken).ConfigureAwait(false);
+            EnsureSetupPyInstallerReferenceIsCoherent(validatedContent, newInstallerName);
         }
 
         if (packageInfo.ControlFilePath is not null && File.Exists(packageInfo.ControlFilePath))
         {
             var controlContent = await File.ReadAllTextAsync(packageInfo.ControlFilePath, cancellationToken).ConfigureAwait(false);
             var updatedContent = SynchronizeControlMetadata(controlContent, synchronizationPlan);
+            EnsureControlPackageIsUnchanged(controlContent, updatedContent);
 
             if (!string.Equals(controlContent, updatedContent, StringComparison.Ordinal))
             {
@@ -134,17 +139,41 @@ public sealed class PackageUpdateService : IPackageUpdateService
 
     private static string UpdateSetupPyInstallerReference(string content, string? previousInstallerName, string newInstallerName)
     {
-        if (string.IsNullOrWhiteSpace(previousInstallerName))
-        {
-            return content;
-        }
+        var newExtension = Path.GetExtension(newInstallerName).TrimStart('.').ToLowerInvariant();
+        var targetFunctionName = newExtension == "exe" ? "install_exe_if_needed" : "install_msi_if_needed";
 
         return Regex.Replace(
             content,
-            @"(?im)(install_(?:msi|exe)_if_needed\(\s*['""])(?<value>[^'""]+)(['""])",
-            match => string.Equals(match.Groups["value"].Value, previousInstallerName, StringComparison.OrdinalIgnoreCase)
-                ? match.Groups[1].Value + newInstallerName + match.Groups[3].Value
-                : match.Value);
+            @"(?im)install_(?:msi|exe)_if_needed\(\s*(?<quote>['""])[^'""]*\k<quote>\s*\)",
+            match =>
+            {
+                var quote = match.Groups["quote"].Value;
+                return $"{targetFunctionName}({quote}{newInstallerName}{quote})";
+            });
+    }
+
+    private static void EnsureSetupPyInstallerReferenceIsCoherent(string content, string newInstallerName)
+    {
+        var newExtension = Path.GetExtension(newInstallerName).TrimStart('.').ToLowerInvariant();
+        var expectedFunction = newExtension == "exe" ? "install_exe_if_needed" : "install_msi_if_needed";
+        var matches = Regex.Matches(content, "(?im)install_(?<fn>msi|exe)_if_needed\\(\\s*(?:'|\")(?<value>[^'\\\"\\r\\n]+)(?:'|\")\\s*\\)");
+        if (matches.Count == 0)
+        {
+            throw new InvalidOperationException($"setup.py ne reference plus d'appel {expectedFunction} apres remplacement.");
+        }
+
+        foreach (Match match in matches)
+        {
+            var functionName = match.Groups["fn"].Value;
+            var value = match.Groups["value"].Value;
+            var expectedSuffix = expectedFunction.EndsWith("exe_if_needed", StringComparison.OrdinalIgnoreCase) ? "exe" : "msi";
+
+            if (!string.Equals(functionName, expectedSuffix, StringComparison.OrdinalIgnoreCase)
+                || !string.Equals(value, newInstallerName, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException("setup.py ne reference pas exactement le nouvel installeur apres remplacement.");
+            }
+        }
     }
 
     private static string TryUpdateSetupPyVersion(string content, string? inferredVersion)
@@ -182,6 +211,22 @@ public sealed class PackageUpdateService : IPackageUpdateService
         content = UpdateControlFieldValue(content, "description_fr", plan.TargetDescriptionFr);
         content = UpdateDescriptionVariants(content, plan);
         return content;
+    }
+
+    private static void EnsureControlPackageIsUnchanged(string originalContent, string updatedContent)
+    {
+        var originalPackage = ExtractControlFieldValue(originalContent, "package");
+        var updatedPackage = ExtractControlFieldValue(updatedContent, "package");
+        if (!string.Equals(originalPackage, updatedPackage, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException("Le champ control/package ne peut pas etre modifie automatiquement.");
+        }
+    }
+
+    private static string? ExtractControlFieldValue(string content, string fieldName)
+    {
+        var match = Regex.Match(content, $@"(?im)^\s*{Regex.Escape(fieldName)}\s*[:=]\s*(?<value>.+)$");
+        return match.Success ? match.Groups["value"].Value.Trim() : null;
     }
 
     private static string UpdateDescriptionVariants(string content, PackageSynchronizationPlan plan)
@@ -301,15 +346,19 @@ public sealed class PackageUpdateService : IPackageUpdateService
 
     private static PackageSynchronizationPlan BuildSynchronizationPlan(PackageInfo packageInfo, string newInstallerFilePath)
     {
-        var targetVersion = InferVersionFromFileName(newInstallerFilePath) ?? packageInfo.Version;
+        var inferredInstallerVersion = InferVersionFromFileName(newInstallerFilePath);
+        var targetVersion = string.IsNullOrWhiteSpace(packageInfo.Version)
+            ? inferredInstallerVersion
+            : packageInfo.Version;
         var currentInstallerName = packageInfo.InstallerPath is null ? packageInfo.ReferencedInstallerName : Path.GetFileName(packageInfo.InstallerPath);
         var targetInstallerName = Path.GetFileName(newInstallerFilePath);
         var packageId = packageInfo.PackageName ?? string.Empty;
         var targetVisibleName = BuildTargetVisibleName(packageInfo, targetVersion, currentInstallerName, targetInstallerName);
         var targetDescription = BuildTargetDescription(packageInfo.Description, packageInfo.VisibleName, targetVisibleName, packageInfo.Version, targetVersion, currentInstallerName, targetInstallerName);
         var targetDescriptionFr = BuildTargetDescription(packageInfo.DescriptionFr, packageInfo.VisibleName, targetVisibleName, packageInfo.Version, targetVersion, currentInstallerName, targetInstallerName);
-        var targetPackageFolder = BuildTargetPackageFolder(packageInfo.PackageFolder, packageInfo.Version, targetVersion, out var renamePlanned, out var renamePossible);
+        var targetPackageFolder = BuildTargetPackageFolder(packageInfo.PackageFolder, packageId, packageInfo.Version, targetVersion, out var renamePlanned, out var renamePossible);
 
+        var expectedVersion = targetVersion ?? packageInfo.Version;
         var plan = new PackageSynchronizationPlan
         {
             PackageId = packageId,
@@ -329,8 +378,14 @@ public sealed class PackageUpdateService : IPackageUpdateService
             TargetPackageFolder = targetPackageFolder,
             PackageFolderRenamePlanned = renamePlanned,
             PackageFolderRenamePossible = renamePossible,
-            ExpectedWaptFileName = BuildExpectedWaptFileName(packageId, targetVersion),
-            ExpectedWaptFileNameNote = "Nom calcule a partir du package id conserve et de la version cible.",
+            ExpectedWaptFileName = WaptNaming.BuildExpectedWaptFileName(
+                targetPackageFolder,
+                packageId,
+                expectedVersion,
+                packageInfo.TargetOs,
+                packageInfo.Maturity,
+                packageInfo.Architecture),
+            ExpectedWaptFileNameNote = "Nom calcule a partir du package id, de la version cible et du contexte (OS/maturite).",
             BackupWillBeCreated = true
         };
 
@@ -354,6 +409,13 @@ public sealed class PackageUpdateService : IPackageUpdateService
         if (string.IsNullOrWhiteSpace(targetVersion))
         {
             plan.Warnings.Add("Nouvelle version non inferable de facon fiable: conservation de la version existante.");
+        }
+
+        if (!string.IsNullOrWhiteSpace(packageInfo.Version)
+            && !string.IsNullOrWhiteSpace(inferredInstallerVersion)
+            && !string.Equals(packageInfo.Version, inferredInstallerVersion, StringComparison.OrdinalIgnoreCase))
+        {
+            plan.Warnings.Add($"Version du package preservee ({packageInfo.Version}) malgre un nom d'installeur suggerant {inferredInstallerVersion}.");
         }
 
         if (string.IsNullOrWhiteSpace(packageInfo.VisibleName))
@@ -399,7 +461,7 @@ public sealed class PackageUpdateService : IPackageUpdateService
         return ReplaceVisibleMetadataText(currentDescription, currentVersion, targetVersion, currentInstallerName, targetInstallerName);
     }
 
-    private static string BuildTargetPackageFolder(string currentPackageFolder, string? currentVersion, string? targetVersion, out bool renamePlanned, out bool renamePossible)
+    private static string BuildTargetPackageFolder(string currentPackageFolder, string? packageId, string? currentVersion, string? targetVersion, out bool renamePlanned, out bool renamePossible)
     {
         renamePlanned = false;
         renamePossible = false;
@@ -415,7 +477,23 @@ public sealed class PackageUpdateService : IPackageUpdateService
             return currentPackageFolder;
         }
 
-        var targetFolderName = folderName.Replace(currentVersion, targetVersion, StringComparison.OrdinalIgnoreCase);
+        var versionIndex = folderName.IndexOf(currentVersion, StringComparison.OrdinalIgnoreCase);
+        if (versionIndex <= 0)
+        {
+            return currentPackageFolder;
+        }
+
+        var prefixWithSeparator = folderName[..versionIndex];
+        var versionSuffix = folderName[(versionIndex + currentVersion.Length)..];
+        var versionSeparator = prefixWithSeparator[^1];
+        if (versionSeparator is not '_' and not '-')
+        {
+            return currentPackageFolder;
+        }
+
+        var fallbackPrefix = prefixWithSeparator[..^1].TrimEnd('_', '-');
+        var stablePrefix = BuildStablePackageFolderPrefix(packageId, fallbackPrefix);
+        var targetFolderName = string.Concat(stablePrefix, versionSeparator, targetVersion, versionSuffix);
         if (string.Equals(folderName, targetFolderName, StringComparison.Ordinal))
         {
             return currentPackageFolder;
@@ -433,14 +511,17 @@ public sealed class PackageUpdateService : IPackageUpdateService
         return targetPackageFolder;
     }
 
-    private static string BuildExpectedWaptFileName(string packageId, string? targetVersion)
+    private static string BuildStablePackageFolderPrefix(string? packageId, string fallbackPrefix)
     {
-        if (string.IsNullOrWhiteSpace(packageId) || string.IsNullOrWhiteSpace(targetVersion))
+        if (string.IsNullOrWhiteSpace(packageId))
         {
-            return "Nom .wapt non inferable";
+            return fallbackPrefix;
         }
 
-        return $"{packageId}_{targetVersion}.wapt";
+        var normalized = Regex.Replace(packageId.Trim(), @"[\s._]+", "-");
+        normalized = Regex.Replace(normalized, @"-{2,}", "-");
+        normalized = normalized.Trim('-');
+        return string.IsNullOrWhiteSpace(normalized) ? fallbackPrefix : normalized;
     }
 
     private static string? InferVersionFromFileName(string installerPath)

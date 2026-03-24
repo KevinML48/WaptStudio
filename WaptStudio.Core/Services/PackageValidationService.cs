@@ -191,6 +191,8 @@ public sealed class PackageValidationService : IPackageValidationService
             result.AddWarning("Les descriptions ne sont pas completes pour toutes les langues attendues.");
         }
 
+        ValidateVersionCoherence(packageInfo, result);
+
         result.BuildPossible = !hasBlockingError;
         result.UploadPossible = result.BuildPossible && settings.EnableUpload && !string.IsNullOrWhiteSpace(packageInfo.ExpectedWaptFileName);
         result.AuditPossible = !hasBlockingError && !string.IsNullOrWhiteSpace(packageInfo.PackageName) && !string.IsNullOrWhiteSpace(settings.AuditPackageArguments);
@@ -225,6 +227,31 @@ public sealed class PackageValidationService : IPackageValidationService
         {
             message = $"Ecriture impossible dans le dossier paquet: {ex.Message}";
             return false;
+        }
+    }
+
+    private static void ValidateVersionCoherence(PackageInfo packageInfo, ValidationResult result)
+    {
+        if (string.IsNullOrWhiteSpace(packageInfo.Version))
+        {
+            return;
+        }
+
+        var folderName = Path.GetFileName(packageInfo.PackageFolder.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+
+        if (!string.IsNullOrWhiteSpace(folderName) && !string.IsNullOrWhiteSpace(packageInfo.Version))
+        {
+            if (!folderName.Contains(packageInfo.Version, StringComparison.OrdinalIgnoreCase)
+                && !string.IsNullOrWhiteSpace(packageInfo.PackageName)
+                && folderName.Contains(packageInfo.PackageName, StringComparison.OrdinalIgnoreCase))
+            {
+                result.AddWarning($"Le nom du dossier ({folderName}) ne contient pas la version detectee ({packageInfo.Version}).");
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(packageInfo.ExpectedWaptFileName))
+        {
+            result.AddInfo($".wapt attendu: {packageInfo.ExpectedWaptFileName}");
         }
     }
 }

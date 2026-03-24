@@ -81,6 +81,37 @@ public sealed class PackageValidationServiceTests
         }
     }
 
+    [Fact]
+    public async Task ValidateAsync_WarnsWhenFolderNameDoesNotContainDetectedVersion()
+    {
+        var inspector = new PackageInspectorService();
+        var packageFolder = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "WaptStudio.Tests.Validation", System.Guid.NewGuid().ToString("N"), "tis-7zip-wapt");
+        System.IO.Directory.CreateDirectory(packageFolder);
+
+        try
+        {
+            await System.IO.File.WriteAllTextAsync(System.IO.Path.Combine(packageFolder, "setup.py"), "package = 'tis-7zip'\nversion = '25.01'\ninstall_msi_if_needed('7z2501.msi')\n");
+            await System.IO.File.WriteAllTextAsync(System.IO.Path.Combine(packageFolder, "control"), "package: tis-7zip\nversion: 25.01\nname: 7-Zip 25.01\nfilename: 7z2501.msi\n");
+            await System.IO.File.WriteAllTextAsync(System.IO.Path.Combine(packageFolder, "7z2501.msi"), "binary-placeholder");
+
+            var service = new PackageValidationService(
+                inspector,
+                new TestWaptCommandService(availabilitySuccess: true),
+                new TestSettingsService(new AppSettings { WaptExecutablePath = "wapt-get.exe" }));
+
+            var result = await service.ValidateAsync(packageFolder, includeWaptValidation: false);
+
+            Assert.Contains(result.Issues, issue => issue.Severity == "WARNING" && issue.Message.Contains("version"));
+        }
+        finally
+        {
+            if (System.IO.Directory.Exists(packageFolder))
+            {
+                System.IO.Directory.Delete(packageFolder, recursive: true);
+            }
+        }
+    }
+
     private sealed class TestWaptCommandService : IWaptCommandService
     {
         private readonly bool _availabilitySuccess;

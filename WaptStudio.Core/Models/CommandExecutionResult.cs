@@ -32,6 +32,8 @@ public sealed class CommandExecutionResult
 
     public bool ManualFallbackRecommended { get; init; }
 
+    public bool IsAuthenticationFailure { get; init; }
+
     public bool RequiresUserInteraction => RequiresCredentialPrompt || RequiresExternalManualWorkflow;
 
     public string StandardOutput { get; init; } = string.Empty;

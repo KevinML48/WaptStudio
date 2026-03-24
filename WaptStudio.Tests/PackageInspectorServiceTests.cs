@@ -60,6 +60,36 @@ public sealed class PackageInspectorServiceTests : IDisposable
         Assert.DoesNotContain(result.Warnings, warning => warning.Contains("Installing: 7z2501.msi", StringComparison.Ordinal));
     }
 
+    [Fact]
+    public async Task AnalyzePackageAsync_DoesNotAppendAllArchitectureToExpectedWaptName()
+    {
+        var packageFolder = Path.Combine(_rootDirectory, "cd48-waptstudio_2501_Windows_DEV-wapt");
+        Directory.CreateDirectory(packageFolder);
+
+        await File.WriteAllTextAsync(
+            Path.Combine(packageFolder, "setup.py"),
+            "package = 'cd48-waptstudio'\n" +
+            "version = '2501'\n" +
+            "target_os = 'windows'\n" +
+            "maturity = 'DEV'\n" +
+            "architecture = 'all'\n" +
+            "install_msi_if_needed(\"7z2501.msi\")\n");
+        await File.WriteAllTextAsync(
+            Path.Combine(packageFolder, "control"),
+            "package: cd48-waptstudio\n" +
+            "version: 2501\n" +
+            "target_os: windows\n" +
+            "maturity: DEV\n" +
+            "architecture: all\n" +
+            "filename: 7z2501.msi\n");
+        await File.WriteAllTextAsync(Path.Combine(packageFolder, "7z2501.msi"), "binary-placeholder");
+
+        var service = new PackageInspectorService();
+        var result = await service.AnalyzePackageAsync(packageFolder);
+
+        Assert.Equal("cd48-waptstudio_2501_windows_DEV.wapt", result.ExpectedWaptFileName);
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(_rootDirectory))

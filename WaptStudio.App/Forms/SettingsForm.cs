@@ -1,4 +1,5 @@
 using System;
+using System.Drawing;
 using System.IO;
 using System.Windows.Forms;
 using WaptStudio.Core.Models;
@@ -38,6 +39,8 @@ public sealed class SettingsForm : Form
         Width = 980;
         Height = 700;
         StartPosition = FormStartPosition.CenterParent;
+        BackColor = Color.FromArgb(243, 245, 249);
+        Font = new Font("Segoe UI", 9.5F, FontStyle.Regular);
 
         InitializeComponent();
         Bind(Settings);
@@ -52,7 +55,8 @@ public sealed class SettingsForm : Form
             Dock = DockStyle.Fill,
             ColumnCount = 3,
             AutoScroll = true,
-            Padding = new Padding(12)
+            Padding = new Padding(20),
+            BackColor = Color.FromArgb(243, 245, 249)
         };
         root.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
@@ -95,12 +99,17 @@ public sealed class SettingsForm : Form
         {
             Dock = DockStyle.Bottom,
             FlowDirection = FlowDirection.RightToLeft,
-            Padding = new Padding(12)
+            Padding = new Padding(20, 12, 20, 12),
+            BackColor = Color.FromArgb(243, 245, 249)
         };
 
-        var saveButton = new Button { Text = "Enregistrer", AutoSize = true };
+        var saveButton = new Button { Text = "Enregistrer", AutoSize = true, FlatStyle = FlatStyle.Flat, BackColor = Color.FromArgb(37, 99, 186), ForeColor = Color.White, Font = new Font("Segoe UI", 9.5F, FontStyle.Bold) };
+        saveButton.FlatAppearance.BorderSize = 0;
+        saveButton.Padding = new Padding(14, 8, 14, 8);
         saveButton.Click += SaveSettings;
-        var cancelButton = new Button { Text = "Annuler", AutoSize = true, DialogResult = DialogResult.Cancel };
+        var cancelButton = new Button { Text = "Annuler", AutoSize = true, DialogResult = DialogResult.Cancel, FlatStyle = FlatStyle.Flat, BackColor = Color.White, ForeColor = Color.FromArgb(15, 23, 42) };
+        cancelButton.FlatAppearance.BorderColor = Color.FromArgb(228, 233, 240);
+        cancelButton.Padding = new Padding(14, 8, 14, 8);
 
         buttonsPanel.Controls.Add(saveButton);
         buttonsPanel.Controls.Add(cancelButton);

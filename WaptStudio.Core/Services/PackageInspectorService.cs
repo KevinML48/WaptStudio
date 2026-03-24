@@ -5,6 +5,7 @@ using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using WaptStudio.Core.Models;
+using WaptStudio.Core.Utilities;
 using WaptStudio.Core.Services.Interfaces;
 
 namespace WaptStudio.Core.Services;
@@ -58,7 +59,14 @@ public sealed partial class PackageInspectorService : IPackageInspectorService
             packageInfo.Description ??= ExtractControlValue(controlContent, "description");
             packageInfo.DescriptionFr ??= ExtractControlValue(controlContent, "description_fr");
             packageInfo.Version ??= ExtractControlValue(controlContent, "version");
+            packageInfo.TargetOs ??= ExtractControlValue(controlContent, "target_os");
+            packageInfo.Architecture ??= ExtractControlValue(controlContent, "architecture");
+            var maturityFromControl = ExtractControlValue(controlContent, "maturity");
             packageInfo.ReferencedInstallerName ??= ExtractControlValue(controlContent, "filename") ?? ExtractReferencedInstaller(controlContent);
+            if (!string.IsNullOrWhiteSpace(maturityFromControl))
+            {
+                packageInfo.Maturity = maturityFromControl.Trim();
+            }
         }
 
         if (packageInfo.SetupPyPath is not null)
@@ -66,7 +74,14 @@ public sealed partial class PackageInspectorService : IPackageInspectorService
             setupPyContent = await File.ReadAllTextAsync(packageInfo.SetupPyPath, cancellationToken).ConfigureAwait(false);
             packageInfo.PackageName ??= ExtractSetupPyValue(setupPyContent, "package");
             packageInfo.Version ??= ExtractSetupPyValue(setupPyContent, "version");
+            packageInfo.TargetOs ??= ExtractSetupPyValue(setupPyContent, "target_os");
+            packageInfo.Architecture ??= ExtractSetupPyValue(setupPyContent, "architecture");
+            var maturityFromSetup = ExtractSetupPyValue(setupPyContent, "maturity");
             packageInfo.ReferencedInstallerName ??= ExtractSetupPyValue(setupPyContent, "installer") ?? ExtractReferencedInstallerFromSetupPy(setupPyContent);
+            if (!string.IsNullOrWhiteSpace(maturityFromSetup))
+            {
+                packageInfo.Maturity = maturityFromSetup.Trim();
+            }
         }
 
         packageInfo.InstallerPath = ResolvePrimaryInstallerPath(packageFolder, executables, packageInfo.ReferencedInstallerName);
@@ -96,14 +111,24 @@ public sealed partial class PackageInspectorService : IPackageInspectorService
         }
 
         packageInfo.Category = _packageClassificationService.Classify(packageInfo, setupPyContent);
-        packageInfo.Maturity = _packageClassificationService.DetectMaturity(packageFolder, packageInfo.PackageName);
+        packageInfo.Maturity = string.IsNullOrWhiteSpace(packageInfo.Maturity)
+            ? _packageClassificationService.DetectMaturity(packageFolder, packageInfo.PackageName)
+            : packageInfo.Maturity;
+        packageInfo.TargetOs ??= WaptNaming.InferTargetOs(packageFolder);
         packageInfo.LastModifiedUtc = Directory.EnumerateFiles(packageFolder, "*", SearchOption.AllDirectories)
             .Select(File.GetLastWriteTimeUtc)
             .DefaultIfEmpty(Directory.GetLastWriteTimeUtc(packageFolder))
             .Max();
-        packageInfo.ExpectedWaptFileName = string.IsNullOrWhiteSpace(packageInfo.PackageName) || string.IsNullOrWhiteSpace(packageInfo.Version)
-            ? null
-            : $"{packageInfo.PackageName}_{packageInfo.Version}.wapt";
+        if (!string.IsNullOrWhiteSpace(packageInfo.PackageName) && !string.IsNullOrWhiteSpace(packageInfo.Version))
+        {
+            packageInfo.ExpectedWaptFileName = WaptNaming.BuildExpectedWaptFileName(
+                packageFolder,
+                packageInfo.PackageName!,
+                packageInfo.Version!,
+                packageInfo.TargetOs,
+                packageInfo.Maturity,
+                packageInfo.Architecture);
+        }
 
         return packageInfo;
     }

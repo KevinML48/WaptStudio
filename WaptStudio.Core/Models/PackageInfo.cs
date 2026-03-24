@@ -17,6 +17,10 @@ public sealed class PackageInfo
 
     public string? Version { get; set; }
 
+    public string? TargetOs { get; set; }
+
+    public string? Architecture { get; set; }
+
     public string? SetupPyPath { get; set; }
 
     public string? ControlFilePath { get; set; }
