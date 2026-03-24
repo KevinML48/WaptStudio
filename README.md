@@ -10,7 +10,7 @@ Le produit final est centre sur un seul objectif metier:
 - remplacer proprement un installateur MSI/EXE
 - synchroniser setup.py, control, version, name, description et description_fr quand le remplacement est fiable
 - calculer un verdict readiness lisible
-- declencher Build, Upload, Uninstall et Audit depuis l'interface
+- declencher Build, Sign, publication preparee, Upload direct, Uninstall et Audit depuis l'interface
 - conserver des workflows manuels securises pour les actions WAPT interactives
 - garder une tracabilite locale via historique, logs, rapports et sauvegardes
 
@@ -30,7 +30,7 @@ Services metier principaux:
 - [WaptStudio.Core/Services/PackageUpdateService.cs](WaptStudio.Core/Services/PackageUpdateService.cs): plan de synchronisation et remplacement d'installateur
 - [WaptStudio.Core/Services/PackageValidationService.cs](WaptStudio.Core/Services/PackageValidationService.cs): readiness metier
 - [WaptStudio.Core/Services/BackupRestoreService.cs](WaptStudio.Core/Services/BackupRestoreService.cs): sauvegarde et restauration
-- [WaptStudio.Core/Services/WaptCommandService.cs](WaptStudio.Core/Services/WaptCommandService.cs): build, sign, upload, audit et uninstall via WAPT
+- [WaptStudio.Core/Services/WaptCommandService.cs](WaptStudio.Core/Services/WaptCommandService.cs): build, sign, upload direct, audit et uninstall via WAPT
 - [WaptStudio.Core/Services/HistoryService.cs](WaptStudio.Core/Services/HistoryService.cs): historique SQLite local
 
 ## Interface finale
@@ -182,8 +182,8 @@ Actions metier exposees:
 - `Valider readiness`
 - `Build`
 - `Sign`
-- `Upload`
-- `Build + Upload`
+- `Publier...`
+- `Construire puis publier...`
 - `Audit`
 - `Uninstall`
 - `Restaurer derniere sauvegarde`
@@ -200,7 +200,7 @@ Messages utilisateur utilises:
 
 Le produit n'affiche pas de faux succes.
 
-## Build, Upload, Audit et Uninstall via WAPT
+## Build, publication finale, Audit et Uninstall via WAPT
 
 Toutes les commandes WAPT passent par [WaptStudio.Core/Services/WaptCommandService.cs](WaptStudio.Core/Services/WaptCommandService.cs).
 
@@ -210,7 +210,7 @@ Commandes prises en charge:
 - validation de paquet
 - build
 - sign
-- upload
+- upload direct
 - audit
 - uninstall
 
@@ -230,7 +230,37 @@ Templates par defaut utiles:
 - validation: `show {packageFolder}`
 - build: `build-package {packageFolder}`
 - sign: `sign-package {packageFolder}`
-- upload: `upload-package {waptFilePath}`
+- upload direct: `upload-package {waptFilePath}`
+
+## Flux recommande de publication
+
+Le flux recommande dans WaptStudio est desormais explicite:
+
+1. construire le vrai `.wapt` depuis WaptStudio
+2. verifier le readiness du paquet
+3. ouvrir la synthese de publication finale
+4. publier via WAPT Console si l'upload direct serveur n'est pas disponible ou pas maitrise
+
+WaptStudio distingue deux modes:
+
+- `Upload direct`: conserve pour les environnements qui disposent reellement d'un acces serveur operationnel et des identifiants admin adequats
+- `Preparation pour WAPT Console`: mode recommande par defaut quand l'equipe ne maitrise pas l'authentification serveur
+
+La synthese finale affiche:
+
+- paquet pret ou non
+- chemin exact du vrai `.wapt`
+- package id
+- version
+- maturite
+- action recommandee
+
+Quand le paquet est pret pour WAPT Console, WaptStudio permet de:
+
+- copier le chemin du `.wapt`
+- ouvrir le dossier contenant le `.wapt`
+- ouvrir le dossier source du paquet
+- marquer la publication comme a faire dans WAPT Console
 - audit: `audit {packageId}`
 - uninstall: `remove {packageId}`
 
@@ -239,8 +269,8 @@ Templates par defaut utiles:
 Pour les actions interactives, WaptStudio conserve les workflows deja introduits:
 
 - prompt temporaire de mot de passe certificat pour `Build` et `Sign`
-- prompt temporaire de login/mot de passe admin pour `Upload`
-- prompt combine pour `Build + Upload`
+- prompt temporaire de login/mot de passe admin uniquement pour `Upload direct`
+- publication via WAPT Console recommandee par defaut si l'environnement serveur n'est pas maitrise
 
 Garanties securite:
 

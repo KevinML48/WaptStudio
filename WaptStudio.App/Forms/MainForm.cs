@@ -65,8 +65,8 @@ public sealed class MainForm : Form
     private readonly Button _validateButton = new() { Text = "Verifier le paquet", AutoSize = true };
     private readonly Button _buildButton = new() { Text = "Construire le .wapt", AutoSize = true };
     private readonly Button _signButton = new() { Text = "Signer le .wapt", AutoSize = true };
-    private readonly Button _uploadButton = new() { Text = "Envoyer au depot", AutoSize = true };
-    private readonly Button _buildAndUploadButton = new() { Text = "Construire et envoyer", AutoSize = true };
+    private readonly Button _uploadButton = new() { Text = "Publier...", AutoSize = true };
+    private readonly Button _buildAndUploadButton = new() { Text = "Construire puis publier...", AutoSize = true };
     private readonly Button _auditButton = new() { Text = "Verifier sur un poste", AutoSize = true };
     private readonly Button _uninstallButton = new() { Text = "Desinstaller du poste", AutoSize = true };
     private readonly Button _restoreBackupButton = new() { Text = "Revenir a la derniere sauvegarde", AutoSize = true };
@@ -346,7 +346,7 @@ public sealed class MainForm : Form
         _validateButton.Click += async (_, _) => await ValidateSelectedPackageAsync(includeWaptValidation: true).ConfigureAwait(true);
         _buildButton.Click += async (_, _) => await ExecuteBuildAsync().ConfigureAwait(true);
         _signButton.Click += async (_, _) => await ExecuteSignAsync().ConfigureAwait(true);
-        _uploadButton.Click += async (_, _) => await ExecuteUploadAsync().ConfigureAwait(true);
+        _uploadButton.Click += async (_, _) => await ExecutePreparePublicationAsync().ConfigureAwait(true);
         _buildAndUploadButton.Click += async (_, _) => await ExecuteBuildAndUploadAsync().ConfigureAwait(true);
         _auditButton.Click += async (_, _) => await ExecuteAuditAsync().ConfigureAwait(true);
         _uninstallButton.Click += async (_, _) => await ExecuteUninstallAsync().ConfigureAwait(true);
@@ -704,6 +704,99 @@ public sealed class MainForm : Form
         return updatedItem;
     }
 
+    private async Task<(PackageCatalogItem Item, ValidationResult Validation, PublicationPreparationResult Preparation)> EvaluatePublicationPreparationAsync(string? explicitWaptFilePath = null)
+    {
+        var item = await RefreshSelectedPackageStateAsync(includeValidation: true).ConfigureAwait(true);
+        var validation = _currentValidationResult
+            ?? await _runtime.PackageValidationService.ValidateAsync(item.PackageFolder, item.PackageInfo, includeWaptValidation: false).ConfigureAwait(true);
+        var preparation = PublicationPreparation.Evaluate(item.PackageFolder, item.PackageInfo, validation, _settings, explicitWaptFilePath);
+        return (item, validation, preparation);
+    }
+
+    private async Task<bool> ExecutePreparePublicationAsync(string? explicitWaptFilePath = null)
+    {
+        try
+        {
+            var context = await EvaluatePublicationPreparationAsync(explicitWaptFilePath).ConfigureAwait(true);
+            var item = context.Item;
+            var validation = context.Validation;
+            var preparation = context.Preparation;
+
+            if (preparation.RecommendedMode == PublicationMode.WaptConsole)
+            {
+                await RegisterHistoryAsync(
+                    PublicationPreparation.GetRecommendationHistoryAction(preparation),
+                    true,
+                    item.PackageFolder,
+                    item.PackageId,
+                    preparation.RecommendationMessage,
+                    null,
+                    item.PackageInfo.Version,
+                    item.PackageInfo.Version,
+                    preparation.WaptFilePath,
+                    validation.VerdictLabel).ConfigureAwait(true);
+            }
+
+            if (!preparation.CanPrepareForConsolePublish)
+            {
+                AppendLog(preparation.StatusMessage);
+                SetActionResult(preparation.StatusMessage, preparation.PackageReady ? WarningColor : BlockedColor);
+                await RegisterHistoryAsync(
+                    PublicationPreparation.GetPreparationHistoryAction(preparation),
+                    false,
+                    item.PackageFolder,
+                    item.PackageId,
+                    preparation.StatusMessage,
+                    null,
+                    item.PackageInfo.Version,
+                    item.PackageInfo.Version,
+                    preparation.WaptFilePath,
+                    validation.VerdictLabel).ConfigureAwait(true);
+
+                using var blockedForm = new PublicationSummaryForm(preparation);
+                blockedForm.ShowDialog(this);
+                return false;
+            }
+
+            using var form = new PublicationSummaryForm(preparation);
+            if (form.ShowDialog(this) != DialogResult.OK)
+            {
+                return false;
+            }
+
+            if (form.SelectedAction == PublicationSummaryAction.MarkForWaptConsole)
+            {
+                var message = $"Le paquet est pret a etre publie via WAPT Console. Package: {item.PackageId}, Version: {item.PackageInfo.Version}, .wapt: {preparation.WaptFilePath}";
+                AppendLog(message);
+                SetActionResult("Paquet pret pour WAPT Console.", ReadyColor);
+                await RegisterHistoryAsync(
+                    PublicationPreparation.GetPreparationHistoryAction(preparation),
+                    true,
+                    item.PackageFolder,
+                    item.PackageId,
+                    message,
+                    null,
+                    item.PackageInfo.Version,
+                    item.PackageInfo.Version,
+                    preparation.WaptFilePath,
+                    validation.VerdictLabel).ConfigureAwait(true);
+                return true;
+            }
+
+            if (form.SelectedAction == PublicationSummaryAction.DirectUpload)
+            {
+                return await ExecuteUploadAsync(preparation.WaptFilePath).ConfigureAwait(true);
+            }
+
+            return false;
+        }
+        catch (Exception ex)
+        {
+            await HandleUiOperationErrorAsync("Preparation de publication impossible.", ex).ConfigureAwait(true);
+            return false;
+        }
+    }
+
     private async Task<bool> ExecuteBuildAsync(WaptExecutionContext? providedContext = null)
     {
         try
@@ -806,10 +899,10 @@ public sealed class MainForm : Form
 
             if (string.IsNullOrWhiteSpace(waptFilePath))
             {
-                var chooseManually = MessageBox.Show(this, "Aucun fichier .wapt coherent n'a ete trouve pour ce paquet. Voulez-vous en selectionner un manuellement ?", "Upload", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == DialogResult.Yes;
+                var chooseManually = MessageBox.Show(this, "Aucun fichier .wapt coherent n'a ete trouve pour ce paquet. Voulez-vous en selectionner un manuellement ?", "Upload direct", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == DialogResult.Yes;
                 if (!chooseManually)
                 {
-                    await RegisterHistoryAsync("UploadBlocked", false, item.PackageFolder, item.PackageId, "Upload bloque: aucun .wapt coherent detecte.", null, item.PackageInfo.Version, item.PackageInfo.Version, null, _currentValidationResult?.VerdictLabel).ConfigureAwait(true);
+                    await RegisterHistoryAsync("DirectUploadFailed", false, item.PackageFolder, item.PackageId, "Upload direct bloque: aucun .wapt coherent detecte.", null, item.PackageInfo.Version, item.PackageInfo.Version, null, _currentValidationResult?.VerdictLabel).ConfigureAwait(true);
                     return false;
                 }
 
@@ -828,8 +921,8 @@ public sealed class MainForm : Form
 
                 if (!IsCoherentWaptForPackage(Path.GetFileName(dialog.FileName), item.PackageInfo.PackageName ?? item.PackageId, item.PackageInfo.Version ?? item.Version))
                 {
-                    MessageBox.Show(this, "Le fichier selectionne ne correspond pas au package/version courants.", "Upload", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                    await RegisterHistoryAsync("UploadBlocked", false, item.PackageFolder, item.PackageId, "Upload bloque: .wapt manuel incoherent.", null, item.PackageInfo.Version, item.PackageInfo.Version, dialog.FileName, _currentValidationResult?.VerdictLabel).ConfigureAwait(true);
+                    MessageBox.Show(this, "Le fichier selectionne ne correspond pas au package/version courants.", "Upload direct", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    await RegisterHistoryAsync("DirectUploadFailed", false, item.PackageFolder, item.PackageId, "Upload direct bloque: .wapt manuel incoherent.", null, item.PackageInfo.Version, item.PackageInfo.Version, dialog.FileName, _currentValidationResult?.VerdictLabel).ConfigureAwait(true);
                     return false;
                 }
 
@@ -844,16 +937,16 @@ public sealed class MainForm : Form
             {
                 if (!File.Exists(waptFilePath))
                 {
-                    MessageBox.Show(this, $"Le fichier .wapt a uploader est introuvable: {waptFilePath}", "Upload", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                    await RegisterHistoryAsync("UploadBlocked", false, item.PackageFolder, item.PackageId, $"Upload bloque: fichier .wapt introuvable ({waptFilePath})", null, item.PackageInfo.Version, item.PackageInfo.Version, null, _currentValidationResult?.VerdictLabel).ConfigureAwait(true);
+                    MessageBox.Show(this, $"Le fichier .wapt a uploader est introuvable: {waptFilePath}", "Upload direct", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    await RegisterHistoryAsync("DirectUploadFailed", false, item.PackageFolder, item.PackageId, $"Upload direct bloque: fichier .wapt introuvable ({waptFilePath})", null, item.PackageInfo.Version, item.PackageInfo.Version, null, _currentValidationResult?.VerdictLabel).ConfigureAwait(true);
                     return false;
                 }
 
                 if (!string.IsNullOrWhiteSpace(expectedWaptName) && !string.Equals(Path.GetFileName(waptFilePath), expectedWaptName, StringComparison.OrdinalIgnoreCase))
                 {
-                    var mismatchMessage = $"Upload bloque: le .wapt detecte ({Path.GetFileName(waptFilePath)}) ne correspond pas au nom attendu ({expectedWaptName}).";
+                    var mismatchMessage = $"Upload direct bloque: le .wapt detecte ({Path.GetFileName(waptFilePath)}) ne correspond pas au nom attendu ({expectedWaptName}).";
 
-                    if (MessageBox.Show(this, mismatchMessage + "\r\nVoulez-vous selectionner manuellement le bon .wapt ?", "Upload", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == DialogResult.Yes)
+                    if (MessageBox.Show(this, mismatchMessage + "\r\nVoulez-vous selectionner manuellement le bon .wapt ?", "Upload direct", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == DialogResult.Yes)
                     {
                         using var dialog = new OpenFileDialog
                         {
@@ -870,8 +963,8 @@ public sealed class MainForm : Form
 
                         if (!string.Equals(Path.GetFileName(dialog.FileName), expectedWaptName, StringComparison.OrdinalIgnoreCase))
                         {
-                            MessageBox.Show(this, "Le fichier selectionne ne correspond toujours pas au nom attendu.", "Upload", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                            await RegisterHistoryAsync("UploadBlocked", false, item.PackageFolder, item.PackageId, mismatchMessage, null, item.PackageInfo.Version, item.PackageInfo.Version, dialog.FileName, _currentValidationResult?.VerdictLabel).ConfigureAwait(true);
+                            MessageBox.Show(this, "Le fichier selectionne ne correspond toujours pas au nom attendu.", "Upload direct", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                            await RegisterHistoryAsync("DirectUploadFailed", false, item.PackageFolder, item.PackageId, mismatchMessage, null, item.PackageInfo.Version, item.PackageInfo.Version, dialog.FileName, _currentValidationResult?.VerdictLabel).ConfigureAwait(true);
                             return false;
                         }
 
@@ -880,7 +973,7 @@ public sealed class MainForm : Form
                     }
                     else
                     {
-                        await RegisterHistoryAsync("UploadBlocked", false, item.PackageFolder, item.PackageId, mismatchMessage, null, item.PackageInfo.Version, item.PackageInfo.Version, waptFilePath, _currentValidationResult?.VerdictLabel).ConfigureAwait(true);
+                        await RegisterHistoryAsync("DirectUploadFailed", false, item.PackageFolder, item.PackageId, mismatchMessage, null, item.PackageInfo.Version, item.PackageInfo.Version, waptFilePath, _currentValidationResult?.VerdictLabel).ConfigureAwait(true);
                         return false;
                     }
                 }
@@ -897,8 +990,8 @@ public sealed class MainForm : Form
                 if (!_settings.DryRunEnabled && executionContext is null)
                 {
                     executionContext = PromptForCredentials(
-                        "Upload WAPT authentifie",
-                        "Saisissez l'identifiant administrateur WAPT et le mot de passe associe pour tenter l'upload assiste. Si cela n'est pas fiable, un workflow manuel sera prepare.",
+                        "Upload direct WAPT authentifie",
+                        "Saisissez l'identifiant administrateur WAPT et le mot de passe associe pour tenter l'upload direct assiste. Si cela n'est pas fiable, utilisez plutot le mode WAPT Console.",
                         requireCertificatePassword: false,
                         requireAdminCredentials: true);
 
@@ -914,10 +1007,10 @@ public sealed class MainForm : Form
                 }
                 _lastKnownWaptFilePath = waptFilePath;
                 _lastKnownWaptFilePackageFolder = item.PackageFolder;
-                await RegisterHistoryAsync("UploadPrepared", true, item.PackageFolder, item.PackageId, $"Upload prepare avec: {waptFilePath}", null, item.PackageInfo.Version, item.PackageInfo.Version, waptFilePath, _currentValidationResult?.VerdictLabel).ConfigureAwait(true);
-                AppendLog($"Upload cible: {waptFilePath}");
+                await RegisterHistoryAsync("DirectUploadPrepared", true, item.PackageFolder, item.PackageId, $"Upload direct prepare avec: {waptFilePath}", null, item.PackageInfo.Version, item.PackageInfo.Version, waptFilePath, _currentValidationResult?.VerdictLabel).ConfigureAwait(true);
+                AppendLog($"Upload direct cible: {waptFilePath}");
                 var result = await _runtime.WaptCommandService.UploadPackageAsync(item.PackageFolder, waptFilePath, executionContext).ConfigureAwait(true);
-                var outcome = await HandleActionResultAsync("Upload", item, result, executionContext?.GetSensitiveValues(), waptFilePath).ConfigureAwait(true);
+                var outcome = await HandleActionResultAsync("DirectUpload", item, result, executionContext?.GetSensitiveValues(), waptFilePath).ConfigureAwait(true);
                 return outcome.Completed;
             }
             finally
@@ -930,7 +1023,7 @@ public sealed class MainForm : Form
         }
         catch (Exception ex)
         {
-            await HandleUiOperationErrorAsync("Upload impossible.", ex).ConfigureAwait(true);
+            await HandleUiOperationErrorAsync("Upload direct impossible.", ex).ConfigureAwait(true);
             return false;
         }
     }
@@ -947,10 +1040,10 @@ public sealed class MainForm : Form
                 if (!_settings.DryRunEnabled)
                 {
                     executionContext = PromptForCredentials(
-                        "Build + Upload",
-                        "Saisissez le mot de passe certificat et les identifiants d'upload. Les secrets ne sont jamais stockes et seront purges apres l'action.",
+                        "Construire puis publier",
+                        "Saisissez uniquement le mot de passe certificat pour construire le vrai .wapt. La publication finale pourra ensuite passer par WAPT Console ou, si votre environnement le permet, par upload direct.",
                         requireCertificatePassword: true,
-                        requireAdminCredentials: true);
+                        requireAdminCredentials: false);
 
                     if (executionContext is null)
                     {
@@ -958,55 +1051,26 @@ public sealed class MainForm : Form
                     }
                 }
 
-                await RegisterHistoryAsync("BuildAndUploadPrepared", true, item.PackageFolder, item.PackageId, "Workflow Build + Upload demarre.", null, item.PackageInfo.Version, item.PackageInfo.Version, null, _currentValidationResult?.VerdictLabel).ConfigureAwait(true);
+                await RegisterHistoryAsync("BuildAndPublishPrepared", true, item.PackageFolder, item.PackageId, "Workflow construction puis publication demarre.", null, item.PackageInfo.Version, item.PackageInfo.Version, null, _currentValidationResult?.VerdictLabel).ConfigureAwait(true);
 
                 var buildCompleted = await ExecuteBuildAsync(executionContext).ConfigureAwait(true);
                 if (!buildCompleted)
                 {
-                    await RegisterHistoryAsync("BuildAndUploadFailed", false, item.PackageFolder, item.PackageId, "Build + Upload echoue: le build n'a pas abouti.", null, item.PackageInfo.Version, item.PackageInfo.Version, null, _currentValidationResult?.VerdictLabel).ConfigureAwait(true);
+                    await RegisterHistoryAsync("BuildAndPublishFailed", false, item.PackageFolder, item.PackageId, "Construction puis publication interrompues: le build n'a pas abouti.", null, item.PackageInfo.Version, item.PackageInfo.Version, null, _currentValidationResult?.VerdictLabel).ConfigureAwait(true);
                     return;
                 }
 
-                await RegisterHistoryAsync("BuildAndUploadBuildSucceeded", true, item.PackageFolder, item.PackageId, $"Build reussi. Fichier .wapt: {_lastKnownWaptFilePath ?? "indetermine"}", null, item.PackageInfo.Version, item.PackageInfo.Version, _lastKnownWaptFilePath, _currentValidationResult?.VerdictLabel).ConfigureAwait(true);
+                await RegisterHistoryAsync("BuildAndPublishBuildSucceeded", true, item.PackageFolder, item.PackageId, $"Build reussi. Fichier .wapt: {_lastKnownWaptFilePath ?? "indetermine"}", null, item.PackageInfo.Version, item.PackageInfo.Version, _lastKnownWaptFilePath, _currentValidationResult?.VerdictLabel).ConfigureAwait(true);
 
                 if (!_settings.DryRunEnabled && (string.IsNullOrWhiteSpace(_lastKnownWaptFilePath) || !File.Exists(_lastKnownWaptFilePath)))
                 {
-                    var noWaptMessage = "Build + Upload: aucun fichier .wapt confirme apres le build. Verifiez que le build a produit un fichier .wapt.";
-                    await RegisterHistoryAsync("BuildAndUploadFailed", false, item.PackageFolder, item.PackageId, noWaptMessage, null, item.PackageInfo.Version, item.PackageInfo.Version, null, _currentValidationResult?.VerdictLabel).ConfigureAwait(true);
-                    MessageBox.Show(this, noWaptMessage, "Build + Upload", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    var noWaptMessage = "Construction puis publication: aucun fichier .wapt confirme apres le build. Verifiez que le build a produit un fichier .wapt.";
+                    await RegisterHistoryAsync("PackageNotReadyForPublish", false, item.PackageFolder, item.PackageId, noWaptMessage, null, item.PackageInfo.Version, item.PackageInfo.Version, null, _currentValidationResult?.VerdictLabel).ConfigureAwait(true);
+                    MessageBox.Show(this, noWaptMessage, "Construire puis publier", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                     return;
                 }
 
-                var lastForPackage = string.Equals(_lastKnownWaptFilePackageFolder, item.PackageFolder, StringComparison.OrdinalIgnoreCase)
-                    ? _lastKnownWaptFilePath
-                    : null;
-
-                var uploadSelection = ResolveUploadWaptSelection(item.PackageFolder, lastForPackage, allowExpectedPathWhenMissing: _settings.DryRunEnabled);
-                var uploadTarget = uploadSelection.ResolvedPath;
-
-                if (string.IsNullOrWhiteSpace(uploadTarget))
-                {
-                    var noTargetMessage = "Build termine mais aucun fichier .wapt n'a pu etre determine pour l'upload.";
-                    await RegisterHistoryAsync("BuildAndUploadFailed", false, item.PackageFolder, item.PackageId, noTargetMessage, null, item.PackageInfo.Version, item.PackageInfo.Version, null, _currentValidationResult?.VerdictLabel).ConfigureAwait(true);
-                    MessageBox.Show(this, noTargetMessage, "Build + Upload", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                    return;
-                }
-
-                var uploadSelectionText = BuildUploadSelectionText(uploadSelection.ExpectedName, uploadSelection.CandidateName, uploadTarget);
-                AppendLog(uploadSelectionText);
-                await RegisterHistoryAsync("BuildAndUploadUploadPrepared", true, item.PackageFolder, item.PackageId, $"Upload prepare avec: {uploadTarget}", null, item.PackageInfo.Version, item.PackageInfo.Version, uploadTarget, _currentValidationResult?.VerdictLabel).ConfigureAwait(true);
-
-                var uploadCompleted = await ExecuteUploadAsync(uploadTarget, executionContext).ConfigureAwait(true);
-
-                if (uploadCompleted)
-                {
-                    await RegisterHistoryAsync("BuildAndUploadUploadSucceeded", true, item.PackageFolder, item.PackageId, $"Build + Upload termine. Package: {item.PackageId}, Version: {item.PackageInfo.Version}, .wapt: {uploadTarget}", null, item.PackageInfo.Version, item.PackageInfo.Version, uploadTarget, _currentValidationResult?.VerdictLabel).ConfigureAwait(true);
-                    AppendLog($"Build + Upload reussi: {uploadTarget}");
-                }
-                else
-                {
-                    await RegisterHistoryAsync("BuildAndUploadFailed", false, item.PackageFolder, item.PackageId, $"Build + Upload: l'upload n'a pas abouti. .wapt: {uploadTarget}", null, item.PackageInfo.Version, item.PackageInfo.Version, uploadTarget, _currentValidationResult?.VerdictLabel).ConfigureAwait(true);
-                }
+                await ExecutePreparePublicationAsync(_lastKnownWaptFilePath).ConfigureAwait(true);
             }
             finally
             {
@@ -1015,7 +1079,7 @@ public sealed class MainForm : Form
         }
         catch (Exception ex)
         {
-            await HandleUiOperationErrorAsync("Workflow Build + Upload impossible.", ex).ConfigureAwait(true);
+            await HandleUiOperationErrorAsync("Workflow construire puis publier impossible.", ex).ConfigureAwait(true);
         }
     }
 
@@ -1074,12 +1138,19 @@ public sealed class MainForm : Form
                 ? "Authentification echouee. Verifiez vos identifiants et reessayez."
                 : sanitizedResult.StandardError;
             MessageBox.Show(this, authMessage, $"{actionType} - Erreur d'authentification", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-            await RegisterHistoryAsync($"{actionType}AuthFailed", false, item.PackageFolder, item.PackageId, authMessage, sanitizedResult, item.PackageInfo.Version, item.PackageInfo.Version, artifactPath, _currentValidationResult?.VerdictLabel).ConfigureAwait(true);
+            var authFailureAction = string.Equals(actionType, "DirectUpload", StringComparison.OrdinalIgnoreCase)
+                ? PublicationPreparation.GetDirectUploadHistoryAction(success: false)
+                : $"{actionType}AuthFailed";
+            await RegisterHistoryAsync(authFailureAction, false, item.PackageFolder, item.PackageId, authMessage, sanitizedResult, item.PackageInfo.Version, item.PackageInfo.Version, artifactPath, _currentValidationResult?.VerdictLabel).ConfigureAwait(true);
             await RefreshWaptStatusAsync().ConfigureAwait(true);
             return new ActionHandlingOutcome(false, null);
         }
 
-        await RegisterHistoryAsync(BuildHistoryActionType(actionType, sanitizedResult), sanitizedResult.IsSuccess || sanitizedResult.IsDryRun, item.PackageFolder, item.PackageId, actionMessage, sanitizedResult, item.PackageInfo.Version, item.PackageInfo.Version, artifactPath, _currentValidationResult?.VerdictLabel).ConfigureAwait(true);
+        var actionSucceeded = sanitizedResult.IsSuccess || sanitizedResult.IsDryRun;
+        var historyActionType = string.Equals(actionType, "DirectUpload", StringComparison.OrdinalIgnoreCase)
+            ? PublicationPreparation.GetDirectUploadHistoryAction(actionSucceeded)
+            : BuildHistoryActionType(actionType, sanitizedResult);
+        await RegisterHistoryAsync(historyActionType, actionSucceeded, item.PackageFolder, item.PackageId, actionMessage, sanitizedResult, item.PackageInfo.Version, item.PackageInfo.Version, artifactPath, _currentValidationResult?.VerdictLabel).ConfigureAwait(true);
         await RefreshWaptStatusAsync().ConfigureAwait(true);
 
         if (sanitizedResult.ManualFallbackRecommended && SupportsManualWorkflow(actionType))
@@ -1577,34 +1648,35 @@ public sealed class MainForm : Form
     private static bool SupportsManualWorkflow(string actionType)
         => string.Equals(actionType, "Build", StringComparison.OrdinalIgnoreCase)
             || string.Equals(actionType, "Sign", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(actionType, "Upload", StringComparison.OrdinalIgnoreCase);
+            || string.Equals(actionType, "Upload", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(actionType, "DirectUpload", StringComparison.OrdinalIgnoreCase);
 
     private static string GetManualWorkflowName(string actionType)
         => string.Equals(actionType, "Sign", StringComparison.OrdinalIgnoreCase)
             ? "signature"
-            : string.Equals(actionType, "Upload", StringComparison.OrdinalIgnoreCase)
+            : string.Equals(actionType, "Upload", StringComparison.OrdinalIgnoreCase) || string.Equals(actionType, "DirectUpload", StringComparison.OrdinalIgnoreCase)
                 ? "upload"
                 : "build";
 
     private static string GetManualHistoryLabel(string actionType)
         => string.Equals(actionType, "Sign", StringComparison.OrdinalIgnoreCase)
             ? "Signature"
-            : string.Equals(actionType, "Upload", StringComparison.OrdinalIgnoreCase)
-                ? "Upload"
+            : string.Equals(actionType, "Upload", StringComparison.OrdinalIgnoreCase) || string.Equals(actionType, "DirectUpload", StringComparison.OrdinalIgnoreCase)
+                ? "Upload direct"
                 : "Build";
 
     private static string GetManualInstructionText(string actionType)
-        => string.Equals(actionType, "Upload", StringComparison.OrdinalIgnoreCase)
+        => string.Equals(actionType, "Upload", StringComparison.OrdinalIgnoreCase) || string.Equals(actionType, "DirectUpload", StringComparison.OrdinalIgnoreCase)
             ? "Cette action peut demander une authentification WAPT interactive. Copiez la commande, ouvrez un terminal dans le dossier du paquet, saisissez les secrets uniquement quand WAPT les demande, puis revenez rattacher le resultat manuel a l'historique."
             : "Cette action peut demander un secret interactif. Copiez la commande, ouvrez un terminal dans le dossier du paquet, saisissez les secrets uniquement quand WAPT les demande, puis revenez rattacher le resultat manuel a l'historique.";
 
     private static string GetManualArtifactLabel(string actionType)
-        => string.Equals(actionType, "Upload", StringComparison.OrdinalIgnoreCase)
+        => string.Equals(actionType, "Upload", StringComparison.OrdinalIgnoreCase) || string.Equals(actionType, "DirectUpload", StringComparison.OrdinalIgnoreCase)
             ? "Chemin du .wapt uploade"
             : "Chemin du .wapt associe";
 
     private static string GetManualSelectArtifactButtonText(string actionType)
-        => string.Equals(actionType, "Upload", StringComparison.OrdinalIgnoreCase)
+        => string.Equals(actionType, "Upload", StringComparison.OrdinalIgnoreCase) || string.Equals(actionType, "DirectUpload", StringComparison.OrdinalIgnoreCase)
             ? "Selectionner le .wapt uploade"
             : "Selectionner le .wapt associe";
 
@@ -1929,7 +2001,7 @@ public sealed class MainForm : Form
 
         actions.Controls.Add(CreateActionFamilyCard("Preparer", "Relire et remplacer l'installeur.", _analyzeButton, _replaceInstallerButton), 0, 0);
         actions.Controls.Add(CreateActionFamilyCard("Verifier", "Valider avant publication.", _validateButton, _auditButton), 1, 0);
-        actions.Controls.Add(CreateActionFamilyCard("Publier", "Construire, signer et envoyer.", _buildButton, _signButton, _uploadButton, _buildAndUploadButton), 2, 0);
+        actions.Controls.Add(CreateActionFamilyCard("Publier", "Construire, signer et publier via WAPT Console ou upload direct.", _buildButton, _signButton, _uploadButton, _buildAndUploadButton), 2, 0);
         actions.Controls.Add(CreateActionFamilyCard("Maintenance", "Rattrapage et sauvegardes.", _manualWorkflowButton, _restoreBackupButton, _openBackupFolderButton, _saveReportButton, _historyDetailsButton, _uninstallButton), 3, 0);
 
         return CreateSectionCard("Actions", "Regroupees par famille.", actions);
@@ -2056,7 +2128,7 @@ public sealed class MainForm : Form
         builder.AppendLine(validationResult.Summary);
         builder.AppendLine();
         builder.AppendLine($"Construire le .wapt: {(validationResult.BuildPossible ? "oui" : "non")}");
-        builder.AppendLine($"Envoyer au depot: {(validationResult.UploadPossible ? "oui" : "non")}");
+        builder.AppendLine($"Upload direct: {(validationResult.UploadPossible ? "oui" : "non")}");
         builder.AppendLine($"Verifier sur un poste: {(validationResult.AuditPossible ? "oui" : "non")}");
         builder.AppendLine($"Desinstaller du poste: {(validationResult.UninstallPossible ? "oui" : "non")}");
 
@@ -2095,15 +2167,18 @@ public sealed class MainForm : Form
             return ("Corriger les blocages", "Consultez les raisons affichees ci-dessous, corrigez le paquet si besoin, puis relancez 'Verifier le paquet'.", _validateButton);
         }
 
-        var knownWaptFilePath = ResolveExpectedWaptFilePath(item.PackageFolder, allowExpectedPathWhenMissing: false);
-        if (validationResult.BuildPossible && string.IsNullOrWhiteSpace(knownWaptFilePath))
+        var publicationPreparation = PublicationPreparation.Evaluate(item.PackageFolder, item.PackageInfo, validationResult, _settings, _lastKnownWaptFilePackageFolder == item.PackageFolder ? _lastKnownWaptFilePath : null);
+        if (validationResult.BuildPossible && !publicationPreparation.HasRealWaptFile)
         {
-            return ("Construire le .wapt", "Le paquet est suffisamment prepare pour une construction. Une fois le .wapt genere, l'envoi au depot sera possible.", _buildButton);
+            return ("Construire le .wapt", "Le paquet est suffisamment prepare pour une construction. Une fois le .wapt genere, vous pourrez preparer la publication via WAPT Console ou choisir l'upload direct si votre environnement le permet.", _buildButton);
         }
 
-        if (validationResult.UploadPossible)
+        if (publicationPreparation.CanPrepareForConsolePublish)
         {
-            return ("Envoyer au depot", "Le paquet peut etre envoye. Utilisez 'Envoyer au depot' ou 'Construire et envoyer' selon votre besoin.", _uploadButton);
+            var recommendation = publicationPreparation.RecommendedMode == PublicationMode.WaptConsole
+                ? "Le .wapt est pret. Ouvrez la synthese finale puis publiez via WAPT Console."
+                : "Le .wapt est pret. Ouvrez la synthese finale pour choisir entre upload direct et WAPT Console.";
+            return ("Preparer la publication", recommendation, _uploadButton);
         }
 
         if (validationResult.BuildPossible)

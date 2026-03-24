@@ -17,6 +17,7 @@ public sealed class SettingsForm : Form
     private readonly CheckBox _backupCheckBox = new() { Text = "Activer les sauvegardes", AutoSize = true };
     private readonly CheckBox _signingCheckBox = new() { Text = "Activer la signature", AutoSize = true };
     private readonly CheckBox _uploadCheckBox = new() { Text = "Activer l'upload", AutoSize = true };
+    private readonly CheckBox _preferConsolePublishCheckBox = new() { Text = "Preferer la publication via WAPT Console", AutoSize = true };
     private readonly CheckBox _overwriteUploadCheckBox = new() { Text = "Autoriser l'ecrasement a l'upload", AutoSize = true };
     private readonly TextBox _availabilityArgsTextBox = new() { Dock = DockStyle.Fill };
     private readonly TextBox _validateArgsTextBox = new() { Dock = DockStyle.Fill };
@@ -72,6 +73,7 @@ public sealed class SettingsForm : Form
         AddSimpleRow(root, row++, "Backups", _backupCheckBox);
         AddSimpleRow(root, row++, "Signature", _signingCheckBox);
         AddSimpleRow(root, row++, "Upload", _uploadCheckBox);
+        AddSimpleRow(root, row++, "Publication recommandee", _preferConsolePublishCheckBox);
         AddSimpleRow(root, row++, "Ecrasement upload", _overwriteUploadCheckBox);
         AddSimpleRow(root, row++, "Arguments test WAPT", _availabilityArgsTextBox);
         AddSimpleRow(root, row++, "Arguments validation", _validateArgsTextBox);
@@ -131,6 +133,7 @@ public sealed class SettingsForm : Form
         _backupCheckBox.Checked = settings.CreateBackups;
         _signingCheckBox.Checked = settings.EnableSigning;
         _uploadCheckBox.Checked = settings.EnableUpload;
+        _preferConsolePublishCheckBox.Checked = settings.PreferWaptConsolePublish;
         _overwriteUploadCheckBox.Checked = settings.UploadOverwriteExisting;
         _availabilityArgsTextBox.Text = settings.AvailabilityArguments;
         _validateArgsTextBox.Text = settings.ValidatePackageArguments;
@@ -159,6 +162,7 @@ public sealed class SettingsForm : Form
             CreateBackups = _backupCheckBox.Checked,
             EnableSigning = _signingCheckBox.Checked,
             EnableUpload = _uploadCheckBox.Checked,
+            PreferWaptConsolePublish = _preferConsolePublishCheckBox.Checked,
             UploadOverwriteExisting = _overwriteUploadCheckBox.Checked,
             AvailabilityArguments = _availabilityArgsTextBox.Text.Trim(),
             ValidatePackageArguments = _validateArgsTextBox.Text.Trim(),
@@ -270,6 +274,7 @@ public sealed class SettingsForm : Form
         BackupsDirectory = source.BackupsDirectory,
         EnableSigning = source.EnableSigning,
         EnableUpload = source.EnableUpload,
+        PreferWaptConsolePublish = source.PreferWaptConsolePublish,
         UploadOverwriteExisting = source.UploadOverwriteExisting,
         SigningKeyPath = source.SigningKeyPath,
         UploadRepositoryUrl = source.UploadRepositoryUrl,

@@ -38,6 +38,8 @@ public sealed class AppSettings
 
     public bool EnableUpload { get; set; } = false;
 
+    public bool PreferWaptConsolePublish { get; set; } = true;
+
     public bool UploadOverwriteExisting { get; set; } = false;
 
     public string? SigningKeyPath { get; set; }
