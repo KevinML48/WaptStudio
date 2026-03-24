@@ -9,15 +9,20 @@ namespace WaptStudio.App.Forms;
 
 public sealed class PublicationSummaryForm : Form
 {
-    private static readonly Color SurfaceColor = Color.FromArgb(243, 245, 249);
+    private static readonly Color SurfaceColor = Color.FromArgb(237, 241, 247);
     private static readonly Color PanelColor = Color.White;
-    private static readonly Color BorderColor = Color.FromArgb(228, 233, 240);
-    private static readonly Color AccentColor = Color.FromArgb(37, 99, 186);
-    private static readonly Color RecommendedColor = Color.FromArgb(22, 128, 92);
+    private static readonly Color PanelAltColor = Color.FromArgb(248, 250, 253);
+    private static readonly Color BorderColor = Color.FromArgb(214, 223, 235);
+    private static readonly Color AccentColor = Color.FromArgb(32, 76, 178);
+    private static readonly Color AccentSoftColor = Color.FromArgb(232, 240, 255);
+    private static readonly Color RecommendedColor = Color.FromArgb(18, 122, 86);
+    private static readonly Color RecommendedSoftColor = Color.FromArgb(227, 248, 240);
+    private static readonly Color WarningSoftColor = Color.FromArgb(255, 245, 226);
+    private static readonly Color DangerSoftColor = Color.FromArgb(255, 234, 236);
     private static readonly Color WarningColor = Color.FromArgb(234, 149, 17);
     private static readonly Color BlockedColor = Color.FromArgb(220, 53, 53);
-    private static readonly Color InfoColor = Color.FromArgb(100, 116, 139);
-    private static readonly Color HeadingColor = Color.FromArgb(15, 23, 42);
+    private static readonly Color InfoColor = Color.FromArgb(82, 96, 120);
+    private static readonly Color HeadingColor = Color.FromArgb(9, 18, 35);
 
     private readonly PublicationPreparationResult _result;
 
@@ -44,7 +49,7 @@ public sealed class PublicationSummaryForm : Form
             Dock = DockStyle.Fill,
             ColumnCount = 1,
             RowCount = 3,
-            Padding = new Padding(20),
+            Padding = new Padding(24),
             BackColor = SurfaceColor
         };
         root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
@@ -52,37 +57,51 @@ public sealed class PublicationSummaryForm : Form
         root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
 
         var header = CreateCard();
-        var headerLayout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, BackColor = PanelColor };
+        var headerTone = _result.PackageReady && _result.HasRealWaptFile ? RecommendedSoftColor : DangerSoftColor;
+        header.BackColor = headerTone;
+        var headerLayout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, BackColor = headerTone };
+        headerLayout.Controls.Add(new Label
+        {
+            Text = _result.RecommendedMode == PublicationMode.WaptConsole ? "Mode recommande: WAPT Console" : "Mode recommande: Upload direct",
+            AutoSize = true,
+            ForeColor = _result.RecommendedMode == PublicationMode.WaptConsole ? RecommendedColor : WarningColor,
+            BackColor = _result.RecommendedMode == PublicationMode.WaptConsole ? PanelColor : WarningSoftColor,
+            Padding = new Padding(14, 8, 14, 8),
+            Font = new Font("Segoe UI Semibold", 9.5F, FontStyle.Bold),
+            Margin = new Padding(0, 0, 0, 12)
+        }, 0, 0);
         headerLayout.Controls.Add(new Label
         {
             Text = _result.PackageReady && _result.HasRealWaptFile ? "Paquet pret a publier" : "Publication a completer",
             AutoSize = true,
-            Font = new Font("Segoe UI Semibold", 15F, FontStyle.Bold),
+            Font = new Font("Segoe UI Semibold", 18F, FontStyle.Bold),
             ForeColor = HeadingColor,
             Margin = new Padding(0, 0, 0, 4)
-        }, 0, 0);
+        }, 0, 1);
         headerLayout.Controls.Add(new Label
         {
             Text = _result.StatusMessage,
             AutoSize = true,
             ForeColor = _result.PackageReady && _result.HasRealWaptFile ? RecommendedColor : BlockedColor,
-            Font = new Font("Segoe UI Semibold", 10.5F, FontStyle.Bold),
-            Margin = new Padding(0, 0, 0, 6)
-        }, 0, 1);
+            Font = new Font("Segoe UI Semibold", 11.5F, FontStyle.Bold),
+            Margin = new Padding(0, 0, 0, 8)
+        }, 0, 2);
         headerLayout.Controls.Add(new Label
         {
             Text = _result.RecommendationMessage,
             AutoSize = true,
             MaximumSize = new Size(860, 0),
-            ForeColor = InfoColor
-        }, 0, 2);
+            ForeColor = InfoColor,
+            Font = new Font("Segoe UI", 10F)
+        }, 0, 3);
         header.Controls.Add(headerLayout);
 
         var content = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
             ColumnCount = 2,
-            BackColor = SurfaceColor
+            BackColor = SurfaceColor,
+            Margin = new Padding(0, 4, 0, 0)
         };
         content.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 52));
         content.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 48));
@@ -109,10 +128,11 @@ public sealed class PublicationSummaryForm : Form
             AutoSize = true,
             MaximumSize = new Size(360, 0),
             ForeColor = InfoColor,
-            Margin = new Padding(0, 0, 0, 12)
+            Font = new Font("Segoe UI", 9.75F),
+            Margin = new Padding(0, 0, 0, 14)
         }, 0, 1);
 
-        var buttonPanel = new FlowLayoutPanel { Dock = DockStyle.Fill, WrapContents = true, BackColor = PanelColor };
+        var buttonPanel = new FlowLayoutPanel { Dock = DockStyle.Fill, WrapContents = true, BackColor = PanelAltColor, Padding = new Padding(14, 14, 14, 6), Margin = new Padding(0, 0, 0, 12) };
         var copyButton = CreateSecondaryButton("Copier le chemin du .wapt");
         copyButton.Enabled = _result.HasRealWaptFile;
         copyButton.Click += (_, _) =>
@@ -181,38 +201,50 @@ public sealed class PublicationSummaryForm : Form
     }
 
     private static Panel CreateCard()
-        => new()
+    {
+        var panel = new Panel
         {
             Dock = DockStyle.Fill,
             BackColor = PanelColor,
             BorderStyle = BorderStyle.None,
-            Padding = new Padding(18),
-            Margin = new Padding(0, 0, 10, 10)
+            Padding = new Padding(22),
+            Margin = new Padding(0, 0, 12, 12)
         };
+
+        panel.Paint += (_, e) =>
+        {
+            using var shadowPen = new Pen(Color.FromArgb(236, 240, 246), 3);
+            using var borderPen = new Pen(BorderColor, 1);
+            e.Graphics.DrawRectangle(shadowPen, 1, 2, panel.Width - 4, panel.Height - 5);
+            e.Graphics.DrawRectangle(borderPen, 0, 0, panel.Width - 1, panel.Height - 1);
+        };
+
+        return panel;
+    }
 
     private static Label CreateTitle(string text)
         => new()
         {
             Text = text,
             AutoSize = true,
-            Font = new Font("Segoe UI Semibold", 11.5F, FontStyle.Bold),
+            Font = new Font("Segoe UI Semibold", 13F, FontStyle.Bold),
             ForeColor = HeadingColor,
-            Margin = new Padding(0, 0, 0, 8)
+            Margin = new Padding(0, 0, 0, 10)
         };
 
     private static Control CreateField(string label, string value)
     {
-        var layout = new TableLayoutPanel { Dock = DockStyle.Top, ColumnCount = 1, AutoSize = true, BackColor = PanelColor, Margin = new Padding(0, 0, 0, 8) };
-        layout.Controls.Add(new Label { Text = label, AutoSize = true, ForeColor = InfoColor, Font = new Font("Segoe UI", 9F), Margin = new Padding(0, 0, 0, 2) }, 0, 0);
-        layout.Controls.Add(new Label { Text = value, AutoSize = true, ForeColor = HeadingColor, Font = new Font("Segoe UI Semibold", 9.5F, FontStyle.Bold) }, 0, 1);
+        var layout = new TableLayoutPanel { Dock = DockStyle.Top, ColumnCount = 1, AutoSize = true, BackColor = PanelColor, Margin = new Padding(0, 0, 0, 10) };
+        layout.Controls.Add(new Label { Text = label, AutoSize = true, ForeColor = InfoColor, Font = new Font("Segoe UI Semibold", 9F, FontStyle.Bold), Margin = new Padding(0, 0, 0, 4) }, 0, 0);
+        layout.Controls.Add(new Label { Text = value, AutoSize = true, ForeColor = HeadingColor, Font = new Font("Segoe UI Semibold", 10F, FontStyle.Bold) }, 0, 1);
         return layout;
     }
 
     private static Control CreateMultiLineField(string label, string value)
     {
-        var layout = new TableLayoutPanel { Dock = DockStyle.Top, ColumnCount = 1, AutoSize = true, BackColor = PanelColor, Margin = new Padding(0, 0, 0, 10) };
-        layout.Controls.Add(new Label { Text = label, AutoSize = true, ForeColor = InfoColor, Font = new Font("Segoe UI", 9F), Margin = new Padding(0, 0, 0, 4) }, 0, 0);
-        layout.Controls.Add(new TextBox { Multiline = true, ReadOnly = true, BorderStyle = BorderStyle.FixedSingle, Text = value, Height = 72, Dock = DockStyle.Top }, 0, 1);
+        var layout = new TableLayoutPanel { Dock = DockStyle.Top, ColumnCount = 1, AutoSize = true, BackColor = PanelColor, Margin = new Padding(0, 0, 0, 12) };
+        layout.Controls.Add(new Label { Text = label, AutoSize = true, ForeColor = InfoColor, Font = new Font("Segoe UI Semibold", 9F, FontStyle.Bold), Margin = new Padding(0, 0, 0, 5) }, 0, 0);
+        layout.Controls.Add(new TextBox { Multiline = true, ReadOnly = true, BorderStyle = BorderStyle.FixedSingle, Text = value, Height = 80, Dock = DockStyle.Top, BackColor = PanelAltColor, Font = new Font("Segoe UI", 9.25F) }, 0, 1);
         return layout;
     }
 
@@ -225,9 +257,9 @@ public sealed class PublicationSummaryForm : Form
             FlatStyle = FlatStyle.Flat,
             BackColor = backColor,
             ForeColor = Color.White,
-            Padding = new Padding(14, 8, 14, 8),
-            Font = new Font("Segoe UI Semibold", 9.5F, FontStyle.Bold),
-            Margin = new Padding(0, 0, 8, 8)
+            Padding = new Padding(18, 11, 18, 11),
+            Font = new Font("Segoe UI Semibold", 10F, FontStyle.Bold),
+            Margin = new Padding(0, 0, 10, 10)
         };
         button.FlatAppearance.BorderSize = 0;
         return button;
@@ -242,9 +274,9 @@ public sealed class PublicationSummaryForm : Form
             FlatStyle = FlatStyle.Flat,
             BackColor = PanelColor,
             ForeColor = HeadingColor,
-            Padding = new Padding(14, 8, 14, 8),
-            Font = new Font("Segoe UI", 9.5F, FontStyle.Regular),
-            Margin = new Padding(0, 0, 8, 8)
+            Padding = new Padding(16, 10, 16, 10),
+            Font = new Font("Segoe UI", 9.75F, FontStyle.Regular),
+            Margin = new Padding(0, 0, 10, 10)
         };
         button.FlatAppearance.BorderSize = 1;
         button.FlatAppearance.BorderColor = BorderColor;

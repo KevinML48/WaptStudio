@@ -19,19 +19,24 @@ namespace WaptStudio.App.Forms;
 
 public sealed class MainForm : Form
 {
-    private static readonly Color AccentColor = Color.FromArgb(37, 99, 186);
-    private static readonly Color RecommendedColor = Color.FromArgb(22, 128, 92);
-    private static readonly Color SurfaceColor = Color.FromArgb(243, 245, 249);
+    private static readonly Color AccentColor = Color.FromArgb(32, 76, 178);
+    private static readonly Color AccentSoftColor = Color.FromArgb(232, 240, 255);
+    private static readonly Color RecommendedColor = Color.FromArgb(18, 122, 86);
+    private static readonly Color RecommendedSoftColor = Color.FromArgb(227, 248, 240);
+    private static readonly Color WarningSoftColor = Color.FromArgb(255, 245, 226);
+    private static readonly Color DangerSoftColor = Color.FromArgb(255, 234, 236);
+    private static readonly Color SurfaceColor = Color.FromArgb(237, 241, 247);
     private static readonly Color PanelColor = Color.White;
-    private static readonly Color BorderColor = Color.FromArgb(228, 233, 240);
+    private static readonly Color PanelAltColor = Color.FromArgb(248, 250, 253);
+    private static readonly Color BorderColor = Color.FromArgb(214, 223, 235);
     private static readonly Color ReadyColor = Color.FromArgb(22, 163, 74);
     private static readonly Color WarningColor = Color.FromArgb(234, 149, 17);
     private static readonly Color BlockedColor = Color.FromArgb(220, 53, 53);
-    private static readonly Color InfoColor = Color.FromArgb(100, 116, 139);
-    private static readonly Color SubtleColor = Color.FromArgb(148, 163, 184);
-    private static readonly Color SurfaceDarkColor = Color.FromArgb(235, 238, 244);
-    private static readonly Color HeadingColor = Color.FromArgb(15, 23, 42);
-    private static readonly Color CardHoverColor = Color.FromArgb(248, 250, 252);
+    private static readonly Color InfoColor = Color.FromArgb(82, 96, 120);
+    private static readonly Color SubtleColor = Color.FromArgb(120, 137, 163);
+    private static readonly Color SurfaceDarkColor = Color.FromArgb(226, 232, 241);
+    private static readonly Color HeadingColor = Color.FromArgb(9, 18, 35);
+    private static readonly Color CardHoverColor = Color.FromArgb(246, 249, 253);
 
     private readonly AppRuntime _runtime;
     private readonly TextBox _catalogRootFolderTextBox = new() { Dock = DockStyle.Fill, BorderStyle = BorderStyle.FixedSingle };
@@ -54,10 +59,12 @@ public sealed class MainForm : Form
     private readonly Label _selectedPackageLabel = new() { AutoSize = true, Text = "Aucun paquet selectionne", Font = new Font("Segoe UI Semibold", 14F, FontStyle.Bold), ForeColor = HeadingColor };
     private readonly Label _selectedPackageMetaLabel = new() { AutoSize = true, Text = "Selectionnez un paquet dans le catalogue.", ForeColor = SubtleColor, Margin = new Padding(0, 6, 0, 0) };
     private readonly Label _statusPackageValueLabel = new() { AutoSize = true, Text = "Aucun paquet choisi", ForeColor = InfoColor };
-    private readonly Label _selectionStateLabel = new() { AutoSize = true, Text = "En attente de selection", ForeColor = Color.White, BackColor = SubtleColor, Padding = new Padding(12, 5, 12, 5), Font = new Font("Segoe UI Semibold", 9.5F, FontStyle.Bold) };
+    private readonly Label _catalogSelectionStateLabel = new() { AutoSize = true, Text = "En attente", ForeColor = HeadingColor, BackColor = PanelColor, Padding = new Padding(12, 6, 12, 6), Font = new Font("Segoe UI Semibold", 9.25F, FontStyle.Bold) };
+    private readonly Label _selectionStateLabel = new() { AutoSize = true, Text = "En attente de selection", ForeColor = HeadingColor, BackColor = PanelColor, Padding = new Padding(12, 6, 12, 6), Font = new Font("Segoe UI Semibold", 9.5F, FontStyle.Bold) };
+    private readonly Label _assistantVerdictBadgeLabel = new() { AutoSize = true, Text = "EN ATTENTE", ForeColor = Color.White, BackColor = SubtleColor, Padding = new Padding(16, 8, 16, 8), Font = new Font("Segoe UI Semibold", 10F, FontStyle.Bold) };
     private readonly Label _readinessBadgeLabel = new() { AutoSize = true, Text = "EN ATTENTE", Padding = new Padding(16, 8, 16, 8), Font = new Font("Segoe UI Semibold", 12F, FontStyle.Bold) };
-    private readonly Label _nextStepTitleLabel = new() { AutoSize = true, Text = "Prochaine etape", Font = new Font("Segoe UI Semibold", 14F, FontStyle.Bold), ForeColor = HeadingColor };
-    private readonly Label _nextStepDescriptionLabel = new() { AutoSize = true, Text = "Chargez un catalogue puis selectionnez un paquet.", ForeColor = InfoColor, MaximumSize = new Size(600, 0) };
+    private readonly Label _nextStepTitleLabel = new() { AutoSize = true, Text = "Prochaine etape", Font = new Font("Segoe UI Semibold", 16F, FontStyle.Bold), ForeColor = HeadingColor };
+    private readonly Label _nextStepDescriptionLabel = new() { AutoSize = true, Text = "Chargez un catalogue puis selectionnez un paquet.", ForeColor = InfoColor, MaximumSize = new Size(600, 0), Font = new Font("Segoe UI", 10F, FontStyle.Regular) };
     private readonly Label _actionResultValueLabel = new() { AutoSize = true, Text = "Aucune action" };
     private readonly Label _waptStatusValueLabel = new() { AutoSize = true, Text = "Inconnu" };
     private readonly Button _analyzeButton = new() { Text = "Relire le paquet", AutoSize = true };
@@ -80,6 +87,7 @@ public sealed class MainForm : Form
     private readonly BindingSource _historyBindingSource = new();
     private readonly System.Windows.Forms.Timer _uiPulseTimer = new() { Interval = 450 };
     private readonly System.Windows.Forms.Timer _loadingAnimTimer = new() { Interval = 350 };
+    private readonly Panel _assistantDecisionPanel = new() { Dock = DockStyle.Top, BackColor = AccentSoftColor, Padding = new Padding(18, 16, 18, 16), Margin = new Padding(0, 0, 0, 12) };
     private int _loadingDotCount;
 
     private AppSettings _settings = new();
@@ -107,6 +115,7 @@ public sealed class MainForm : Form
         StartPosition = FormStartPosition.CenterScreen;
         BackColor = SurfaceColor;
         Font = new Font("Segoe UI", 9.5F, FontStyle.Regular);
+        MinimumSize = new Size(1480, 900);
 
         InitializeComponent();
         WireEvents();
@@ -169,7 +178,7 @@ public sealed class MainForm : Form
     private Control BuildHeaderPanel()
     {
         var panel = CreateCardPanel();
-        panel.Padding = new Padding(24, 16, 24, 14);
+        panel.Padding = new Padding(28, 22, 28, 20);
         panel.AutoSize = true;
 
         var layout = new TableLayoutPanel { Dock = DockStyle.Top, ColumnCount = 1, RowCount = 2, AutoSize = true, BackColor = PanelColor };
@@ -181,24 +190,33 @@ public sealed class MainForm : Form
         topRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         topRow.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
 
-        var titleLabel = new Label
+        var titleBlock = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, AutoSize = true, BackColor = PanelColor };
+        titleBlock.Controls.Add(new Label
         {
             Text = "WaptStudio",
             AutoSize = true,
-            Font = new Font("Segoe UI Semibold", 16F, FontStyle.Bold),
+            Font = new Font("Segoe UI Semibold", 21F, FontStyle.Bold),
             ForeColor = HeadingColor,
-            Margin = new Padding(0, 0, 0, 0)
-        };
+            Margin = new Padding(0, 0, 0, 2)
+        }, 0, 0);
+        titleBlock.Controls.Add(new Label
+        {
+            Text = "Supervision, preparation et publication des paquets WAPT avec une lecture immediate de l'etat et de la prochaine action.",
+            AutoSize = true,
+            Font = new Font("Segoe UI", 10F, FontStyle.Regular),
+            ForeColor = InfoColor,
+            MaximumSize = new Size(760, 0)
+        }, 0, 1);
 
-        var statusRow = new FlowLayoutPanel { AutoSize = true, WrapContents = false, BackColor = PanelColor, Margin = new Padding(0, 6, 0, 0) };
+        var statusRow = new FlowLayoutPanel { AutoSize = true, WrapContents = false, BackColor = PanelAltColor, Margin = new Padding(0, 6, 0, 0), Padding = new Padding(14, 10, 14, 10) };
         statusRow.Controls.Add(_catalogSummaryLabel);
-        statusRow.Controls.Add(new Label { Text = "  ·  ", AutoSize = true, ForeColor = SubtleColor, Padding = new Padding(0, 0, 0, 0) });
+        statusRow.Controls.Add(new Label { Text = "  ·  ", AutoSize = true, ForeColor = SubtleColor, Padding = new Padding(2, 0, 2, 0) });
         statusRow.Controls.Add(_waptStatusValueLabel);
 
-        topRow.Controls.Add(titleLabel, 0, 0);
+        topRow.Controls.Add(titleBlock, 0, 0);
         topRow.Controls.Add(statusRow, 1, 0);
 
-        var inputs = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 9, AutoSize = true, BackColor = PanelColor, Margin = new Padding(0, 12, 0, 0) };
+        var inputs = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 9, AutoSize = true, BackColor = PanelAltColor, Margin = new Padding(0, 18, 0, 0), Padding = new Padding(16, 14, 16, 14) };
         inputs.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         inputs.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         inputs.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
@@ -209,11 +227,11 @@ public sealed class MainForm : Form
         inputs.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         inputs.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
 
-        inputs.Controls.Add(new Label { Text = "Dossier catalogue", AutoSize = true, Padding = new Padding(0, 8, 8, 0), ForeColor = InfoColor, Font = new Font("Segoe UI", 9F) }, 0, 0);
+        inputs.Controls.Add(new Label { Text = "Dossier catalogue", AutoSize = true, Padding = new Padding(0, 8, 10, 0), ForeColor = InfoColor, Font = new Font("Segoe UI Semibold", 9F, FontStyle.Bold) }, 0, 0);
         inputs.Controls.Add(_catalogRootFolderTextBox, 1, 0);
         inputs.Controls.Add(_browseCatalogButton, 2, 0);
         inputs.Controls.Add(_recursiveScanCheckBox, 3, 0);
-        inputs.Controls.Add(new Label { Text = "Profondeur", AutoSize = true, Padding = new Padding(12, 8, 6, 0), ForeColor = InfoColor, Font = new Font("Segoe UI", 9F) }, 4, 0);
+        inputs.Controls.Add(new Label { Text = "Profondeur", AutoSize = true, Padding = new Padding(14, 8, 8, 0), ForeColor = InfoColor, Font = new Font("Segoe UI Semibold", 9F, FontStyle.Bold) }, 4, 0);
         inputs.Controls.Add(_semiRecursiveDepthInput, 5, 0);
         inputs.Controls.Add(_scanCatalogButton, 6, 0);
         inputs.Controls.Add(_settingsButton, 7, 0);
@@ -228,7 +246,7 @@ public sealed class MainForm : Form
     private Control BuildStatusStripPanel()
     {
         var panel = CreateCardPanel();
-        panel.Padding = new Padding(24, 8, 24, 8);
+        panel.Padding = new Padding(26, 12, 26, 12);
         panel.BackColor = SurfaceDarkColor;
         panel.AutoSize = true;
 
@@ -238,11 +256,11 @@ public sealed class MainForm : Form
             layout.ColumnStyles.Add(new ColumnStyle(index % 2 == 0 ? SizeType.AutoSize : SizeType.Percent, index % 2 == 0 ? 0 : 50));
         }
 
-        layout.Controls.Add(new Label { Text = "Paquet", AutoSize = true, Padding = new Padding(0, 5, 10, 0), ForeColor = SubtleColor, Font = new Font("Segoe UI", 9F) }, 0, 0);
+        layout.Controls.Add(new Label { Text = "Paquet", AutoSize = true, Padding = new Padding(0, 7, 10, 0), ForeColor = SubtleColor, Font = new Font("Segoe UI Semibold", 9F, FontStyle.Bold) }, 0, 0);
         layout.Controls.Add(_statusPackageValueLabel, 1, 0);
-        layout.Controls.Add(new Label { Text = "Etat", AutoSize = true, Padding = new Padding(24, 5, 10, 0), ForeColor = SubtleColor, Font = new Font("Segoe UI", 9F) }, 2, 0);
+        layout.Controls.Add(new Label { Text = "Etat", AutoSize = true, Padding = new Padding(26, 7, 10, 0), ForeColor = SubtleColor, Font = new Font("Segoe UI Semibold", 9F, FontStyle.Bold) }, 2, 0);
         layout.Controls.Add(_readinessBadgeLabel, 3, 0);
-        layout.Controls.Add(new Label { Text = "Derniere action", AutoSize = true, Padding = new Padding(24, 5, 10, 0), ForeColor = SubtleColor, Font = new Font("Segoe UI", 9F) }, 4, 0);
+        layout.Controls.Add(new Label { Text = "Derniere action", AutoSize = true, Padding = new Padding(26, 7, 10, 0), ForeColor = SubtleColor, Font = new Font("Segoe UI Semibold", 9F, FontStyle.Bold) }, 4, 0);
         layout.Controls.Add(_actionResultValueLabel, 5, 0);
 
         panel.Controls.Add(layout);
@@ -251,9 +269,9 @@ public sealed class MainForm : Form
 
     private Control BuildMainArea()
     {
-        var split = new SplitContainer { Dock = DockStyle.Fill, Orientation = Orientation.Vertical, SplitterDistance = 750, SplitterWidth = 6, BackColor = SurfaceColor };
-        split.Panel1.Padding = new Padding(0, 8, 4, 0);
-        split.Panel2.Padding = new Padding(4, 8, 0, 0);
+        var split = new SplitContainer { Dock = DockStyle.Fill, Orientation = Orientation.Vertical, SplitterDistance = 760, SplitterWidth = 10, BackColor = SurfaceColor, IsSplitterFixed = false };
+        split.Panel1.Padding = new Padding(0, 10, 6, 0);
+        split.Panel2.Padding = new Padding(6, 10, 0, 0);
 
         split.Panel1.Controls.Add(BuildCatalogArea());
         split.Panel2.Controls.Add(BuildDetailsArea());
@@ -263,7 +281,7 @@ public sealed class MainForm : Form
     private Control BuildCatalogArea()
     {
         var card = CreateCardPanel();
-        card.Padding = new Padding(20);
+        card.Padding = new Padding(24);
         card.Paint += (sender, e) =>
         {
             var p = (Panel)sender!;
@@ -282,9 +300,9 @@ public sealed class MainForm : Form
             Dock = DockStyle.Fill,
             AutoSize = true,
             ColumnCount = 6,
-            BackColor = SurfaceColor,
-            Margin = new Padding(0, 0, 0, 12),
-            Padding = new Padding(12, 8, 12, 8)
+            BackColor = PanelAltColor,
+            Margin = new Padding(0, 0, 0, 16),
+            Padding = new Padding(16, 12, 16, 12)
         };
         filterRow.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         filterRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
@@ -292,16 +310,16 @@ public sealed class MainForm : Form
         filterRow.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         filterRow.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         filterRow.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-        filterRow.Controls.Add(new Label { Text = "\uD83D\uDD0D", AutoSize = true, Padding = new Padding(0, 6, 6, 0), ForeColor = SubtleColor, Font = new Font("Segoe UI", 9F) }, 0, 0);
-        _searchTextBox.Width = 260;
-        _searchTextBox.Font = new Font("Segoe UI", 9.5F);
+        filterRow.Controls.Add(new Label { Text = "\uD83D\uDD0D", AutoSize = true, Padding = new Padding(0, 7, 8, 0), ForeColor = SubtleColor, Font = new Font("Segoe UI", 10F) }, 0, 0);
+        _searchTextBox.Width = 300;
+        _searchTextBox.Font = new Font("Segoe UI", 10F);
         filterRow.Controls.Add(_searchTextBox, 1, 0);
-        filterRow.Controls.Add(new Label { Text = "Type", AutoSize = true, Padding = new Padding(16, 6, 6, 0), ForeColor = SubtleColor, Font = new Font("Segoe UI", 9F) }, 2, 0);
+        filterRow.Controls.Add(new Label { Text = "Type", AutoSize = true, Padding = new Padding(18, 7, 8, 0), ForeColor = SubtleColor, Font = new Font("Segoe UI Semibold", 9F, FontStyle.Bold) }, 2, 0);
         _categoryFilterComboBox.Width = 140;
-        _categoryFilterComboBox.Font = new Font("Segoe UI", 9.5F);
+        _categoryFilterComboBox.Font = new Font("Segoe UI", 10F);
         filterRow.Controls.Add(_categoryFilterComboBox, 3, 0);
-        filterRow.Controls.Add(new Label { Text = "Statut", AutoSize = true, Padding = new Padding(16, 6, 6, 0), ForeColor = SubtleColor, Font = new Font("Segoe UI", 9F) }, 4, 0);
-        filterRow.Controls.Add(_selectionStateLabel, 5, 0);
+        filterRow.Controls.Add(new Label { Text = "Statut", AutoSize = true, Padding = new Padding(18, 7, 8, 0), ForeColor = SubtleColor, Font = new Font("Segoe UI Semibold", 9F, FontStyle.Bold) }, 4, 0);
+        filterRow.Controls.Add(_catalogSelectionStateLabel, 5, 0);
         layout.Controls.Add(filterRow, 0, 1);
 
         layout.Controls.Add(_catalogGrid, 0, 2);
@@ -312,14 +330,14 @@ public sealed class MainForm : Form
 
     private Control BuildDetailsArea()
     {
-        var layout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 3, BackColor = SurfaceColor };
+        var layout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 3, BackColor = SurfaceColor, Margin = new Padding(0) };
+        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 32));
         layout.RowStyles.Add(new RowStyle(SizeType.Percent, 30));
-        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 35));
-        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 35));
+        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 38));
 
-        var summaryRow = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, BackColor = SurfaceColor, Margin = new Padding(0, 0, 0, 4) };
-        summaryRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 45));
-        summaryRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 55));
+        var summaryRow = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, BackColor = SurfaceColor, Margin = new Padding(0, 0, 0, 8) };
+        summaryRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 42));
+        summaryRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 58));
         summaryRow.Controls.Add(BuildPackageSummaryCard(), 0, 0);
         summaryRow.Controls.Add(BuildAssistantCard(), 1, 0);
 
@@ -532,8 +550,15 @@ public sealed class MainForm : Form
             _selectedPackageMetaLabel.Text = "Selectionnez un paquet dans le catalogue.";
             _selectedPackageMetaLabel.ForeColor = SubtleColor;
             _statusPackageValueLabel.Text = "Aucun paquet choisi";
+            _catalogSelectionStateLabel.Text = "En attente";
+            _catalogSelectionStateLabel.BackColor = PanelColor;
+            _catalogSelectionStateLabel.ForeColor = InfoColor;
             _selectionStateLabel.Text = "En attente";
-            _selectionStateLabel.BackColor = SubtleColor;
+            _selectionStateLabel.BackColor = PanelAltColor;
+            _selectionStateLabel.ForeColor = InfoColor;
+            _assistantVerdictBadgeLabel.Text = "EN ATTENTE";
+            _assistantVerdictBadgeLabel.BackColor = SubtleColor;
+            _assistantDecisionPanel.BackColor = PanelAltColor;
             _packageSummaryTextBox.Text = string.Empty;
             _assistantTextBox.Text = "Selectionnez un paquet dans le catalogue pour afficher son etat et la prochaine action recommandee.";
             _packageDetailsTextBox.Text = string.Empty;
@@ -545,13 +570,20 @@ public sealed class MainForm : Form
             return;
         }
 
-        _selectedPackageLabel.Text = item.PackageId;
+        _selectedPackageLabel.Text = string.IsNullOrWhiteSpace(item.VisibleName) ? item.PackageId : item.VisibleName;
         _selectedPackageLabel.ForeColor = HeadingColor;
-        _selectedPackageMetaLabel.Text = $"{item.VisibleName}  \u00b7  Version {(string.IsNullOrWhiteSpace(item.Version) ? "non detectee" : item.Version)}  \u00b7  {item.Category.ToString().ToUpperInvariant()}  \u00b7  {item.Maturity}";
+        _selectedPackageMetaLabel.Text = $"{item.PackageId}  \u00b7  Version {(string.IsNullOrWhiteSpace(item.Version) ? "non detectee" : item.Version)}  \u00b7  {item.Category.ToString().ToUpperInvariant()}  \u00b7  {item.Maturity}";
         _selectedPackageMetaLabel.ForeColor = InfoColor;
         _statusPackageValueLabel.Text = $"{item.PackageId} - {item.VisibleName}";
+        _catalogSelectionStateLabel.Text = BuildSelectionStateLabel(validationResult);
+        _catalogSelectionStateLabel.BackColor = GetSoftVerdictColor(validationResult?.Verdict ?? item.ReadinessVerdict);
+        _catalogSelectionStateLabel.ForeColor = GetVerdictColor(validationResult?.Verdict ?? item.ReadinessVerdict);
         _selectionStateLabel.Text = BuildSelectionStateLabel(validationResult);
-        _selectionStateLabel.BackColor = GetVerdictColor(validationResult?.Verdict ?? item.ReadinessVerdict);
+        _selectionStateLabel.BackColor = GetSoftVerdictColor(validationResult?.Verdict ?? item.ReadinessVerdict);
+        _selectionStateLabel.ForeColor = GetVerdictColor(validationResult?.Verdict ?? item.ReadinessVerdict);
+        _assistantVerdictBadgeLabel.Text = validationResult?.VerdictLabel ?? item.ReadinessLabel;
+        _assistantVerdictBadgeLabel.BackColor = GetVerdictColor(validationResult?.Verdict ?? item.ReadinessVerdict);
+        _assistantDecisionPanel.BackColor = GetSoftVerdictColor(validationResult?.Verdict ?? item.ReadinessVerdict);
         _packageSummaryTextBox.Text = BuildPackageSummaryText(item, validationResult);
         _assistantTextBox.Text = BuildAssistantText(validationResult);
         _packageDetailsTextBox.Text = BuildPackageDetailsText(item);
@@ -1390,29 +1422,29 @@ public sealed class MainForm : Form
 
     private void ConfigureCatalogGrid()
     {
-        _catalogGrid.DefaultCellStyle.Font = new Font("Segoe UI", 9.5F);
-        _catalogGrid.DefaultCellStyle.Padding = new Padding(10, 6, 10, 6);
-        _catalogGrid.DefaultCellStyle.SelectionBackColor = Color.FromArgb(219, 234, 254);
+        _catalogGrid.DefaultCellStyle.Font = new Font("Segoe UI", 9.75F);
+        _catalogGrid.DefaultCellStyle.Padding = new Padding(12, 9, 12, 9);
+        _catalogGrid.DefaultCellStyle.SelectionBackColor = AccentSoftColor;
         _catalogGrid.DefaultCellStyle.SelectionForeColor = HeadingColor;
-        _catalogGrid.AlternatingRowsDefaultCellStyle.BackColor = Color.FromArgb(249, 250, 252);
-        _catalogGrid.RowTemplate.Height = 38;
+        _catalogGrid.AlternatingRowsDefaultCellStyle.BackColor = PanelAltColor;
+        _catalogGrid.RowTemplate.Height = 44;
         _catalogGrid.CellBorderStyle = DataGridViewCellBorderStyle.SingleHorizontal;
-        _catalogGrid.GridColor = Color.FromArgb(238, 241, 246);
-        _catalogGrid.ColumnHeadersHeight = 42;
+        _catalogGrid.GridColor = Color.FromArgb(231, 237, 244);
+        _catalogGrid.ColumnHeadersHeight = 48;
         _catalogGrid.ColumnHeadersBorderStyle = DataGridViewHeaderBorderStyle.None;
-        _catalogGrid.ColumnHeadersDefaultCellStyle.Font = new Font("Segoe UI", 9F);
-        _catalogGrid.ColumnHeadersDefaultCellStyle.BackColor = SurfaceColor;
-        _catalogGrid.ColumnHeadersDefaultCellStyle.ForeColor = SubtleColor;
-        _catalogGrid.ColumnHeadersDefaultCellStyle.Padding = new Padding(10, 8, 10, 8);
+        _catalogGrid.ColumnHeadersDefaultCellStyle.Font = new Font("Segoe UI Semibold", 9.5F, FontStyle.Bold);
+        _catalogGrid.ColumnHeadersDefaultCellStyle.BackColor = Color.FromArgb(241, 245, 251);
+        _catalogGrid.ColumnHeadersDefaultCellStyle.ForeColor = InfoColor;
+        _catalogGrid.ColumnHeadersDefaultCellStyle.Padding = new Padding(12, 10, 12, 10);
         _catalogGrid.EnableHeadersVisualStyles = false;
         _catalogGrid.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill;
         _catalogGrid.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.DisableResizing;
-        _catalogGrid.Columns.Add(new DataGridViewTextBoxColumn { DataPropertyName = nameof(PackageCatalogItem.PackageId), HeaderText = "Package ID", FillWeight = 16 });
-        _catalogGrid.Columns.Add(new DataGridViewTextBoxColumn { DataPropertyName = nameof(PackageCatalogItem.VisibleName), HeaderText = "Nom", FillWeight = 22 });
+        _catalogGrid.Columns.Add(new DataGridViewTextBoxColumn { DataPropertyName = nameof(PackageCatalogItem.PackageId), HeaderText = "Package ID", FillWeight = 15 });
+        _catalogGrid.Columns.Add(new DataGridViewTextBoxColumn { DataPropertyName = nameof(PackageCatalogItem.VisibleName), HeaderText = "Nom", FillWeight = 25 });
         _catalogGrid.Columns.Add(new DataGridViewTextBoxColumn { DataPropertyName = nameof(PackageCatalogItem.Version), HeaderText = "Version", FillWeight = 10 });
         _catalogGrid.Columns.Add(new DataGridViewTextBoxColumn { DataPropertyName = nameof(PackageCatalogItem.Category), HeaderText = "Type", FillWeight = 8 });
         _catalogGrid.Columns.Add(new DataGridViewTextBoxColumn { DataPropertyName = nameof(PackageCatalogItem.Maturity), HeaderText = "Maturite", FillWeight = 8 });
-        _catalogGrid.Columns.Add(new DataGridViewTextBoxColumn { DataPropertyName = nameof(PackageCatalogItem.ReadinessLabel), HeaderText = "Etat", FillWeight = 12 });
+        _catalogGrid.Columns.Add(new DataGridViewTextBoxColumn { DataPropertyName = nameof(PackageCatalogItem.ReadinessLabel), HeaderText = "Etat", FillWeight = 13 });
         _catalogGrid.Columns.Add(new DataGridViewTextBoxColumn { DataPropertyName = nameof(PackageCatalogItem.LastModifiedUtc), HeaderText = "Modifie le", FillWeight = 12, DefaultCellStyle = new DataGridViewCellStyle { Format = "g" } });
         _catalogGrid.Columns.Add(new DataGridViewTextBoxColumn { DataPropertyName = nameof(PackageCatalogItem.PackageFolder), HeaderText = "Dossier", FillWeight = 12 });
         _catalogGrid.CellFormatting += (_, eventArgs) =>
@@ -1429,9 +1461,9 @@ public sealed class MainForm : Form
                 {
                     var (bg, fg) = catalogItem.ReadinessVerdict switch
                     {
-                        ReadinessVerdict.ReadyForBuildUpload => (Color.FromArgb(220, 252, 231), ReadyColor),
-                        ReadinessVerdict.ReadyWithWarnings => (Color.FromArgb(254, 243, 199), WarningColor),
-                        _ => (Color.FromArgb(254, 226, 226), BlockedColor)
+                        ReadinessVerdict.ReadyForBuildUpload => (RecommendedSoftColor, ReadyColor),
+                        ReadinessVerdict.ReadyWithWarnings => (WarningSoftColor, WarningColor),
+                        _ => (DangerSoftColor, BlockedColor)
                     };
                     eventArgs.CellStyle!.BackColor = bg;
                     eventArgs.CellStyle.ForeColor = fg;
@@ -1445,16 +1477,16 @@ public sealed class MainForm : Form
 
     private void ConfigureHistoryGrid()
     {
-        _historyGrid.DefaultCellStyle.Font = new Font("Segoe UI", 9F);
-        _historyGrid.DefaultCellStyle.Padding = new Padding(6, 3, 6, 3);
-        _historyGrid.DefaultCellStyle.SelectionBackColor = Color.FromArgb(219, 234, 254);
+        _historyGrid.DefaultCellStyle.Font = new Font("Segoe UI", 9.25F);
+        _historyGrid.DefaultCellStyle.Padding = new Padding(8, 5, 8, 5);
+        _historyGrid.DefaultCellStyle.SelectionBackColor = AccentSoftColor;
         _historyGrid.DefaultCellStyle.SelectionForeColor = HeadingColor;
-        _historyGrid.AlternatingRowsDefaultCellStyle.BackColor = Color.FromArgb(249, 250, 252);
-        _historyGrid.RowTemplate.Height = 32;
-        _historyGrid.GridColor = Color.FromArgb(241, 243, 247);
-        _historyGrid.ColumnHeadersHeight = 36;
+        _historyGrid.AlternatingRowsDefaultCellStyle.BackColor = PanelAltColor;
+        _historyGrid.RowTemplate.Height = 36;
+        _historyGrid.GridColor = Color.FromArgb(236, 240, 246);
+        _historyGrid.ColumnHeadersHeight = 40;
         _historyGrid.ColumnHeadersDefaultCellStyle.Font = new Font("Segoe UI Semibold", 9F, FontStyle.Bold);
-        _historyGrid.ColumnHeadersDefaultCellStyle.BackColor = Color.FromArgb(248, 249, 252);
+        _historyGrid.ColumnHeadersDefaultCellStyle.BackColor = Color.FromArgb(244, 247, 251);
         _historyGrid.ColumnHeadersDefaultCellStyle.ForeColor = InfoColor;
         _historyGrid.EnableHeadersVisualStyles = false;
         _historyGrid.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.DisableResizing;
@@ -1870,6 +1902,14 @@ public sealed class MainForm : Form
             _ => BlockedColor
         };
 
+    private static Color GetSoftVerdictColor(ReadinessVerdict verdict)
+        => verdict switch
+        {
+            ReadinessVerdict.ReadyForBuildUpload => RecommendedSoftColor,
+            ReadinessVerdict.ReadyWithWarnings => WarningSoftColor,
+            _ => DangerSoftColor
+        };
+
     private void PulseSelectionAccent()
     {
         _pulseState = !_pulseState;
@@ -1889,13 +1929,17 @@ public sealed class MainForm : Form
     private static Control CreateSectionCard(string title, string subtitle, Control content)
     {
         var card = CreateCardPanel();
-        card.Padding = new Padding(18);
+        card.Padding = new Padding(22);
         card.Paint += (sender, e) =>
         {
             var panel = (Panel)sender!;
-            using var pen = new Pen(SurfaceDarkColor, 1);
+            using var shadowPen = new Pen(Color.FromArgb(236, 240, 246), 3);
+            using var pen = new Pen(BorderColor, 1);
             e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+            e.Graphics.DrawRectangle(shadowPen, 1, 2, panel.Width - 4, panel.Height - 5);
             e.Graphics.DrawRectangle(pen, 0, 0, panel.Width - 1, panel.Height - 1);
+            using var accentBrush = new SolidBrush(Color.FromArgb(245, 247, 251));
+            e.Graphics.FillRectangle(accentBrush, 1, 1, panel.Width - 2, 6);
         };
 
         var layout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 2, BackColor = PanelColor };
@@ -1910,8 +1954,8 @@ public sealed class MainForm : Form
     private static Control CreateSectionHeader(string title, string subtitle)
     {
         var panel = new TableLayoutPanel { Dock = DockStyle.Top, ColumnCount = 1, AutoSize = true, BackColor = PanelColor, Margin = new Padding(0, 0, 0, 14) };
-        panel.Controls.Add(new Label { Text = title, AutoSize = true, Font = new Font("Segoe UI Semibold", 13F, FontStyle.Bold), ForeColor = HeadingColor, Margin = new Padding(0, 0, 0, 3) }, 0, 0);
-        panel.Controls.Add(new Label { Text = subtitle, AutoSize = true, ForeColor = SubtleColor, Font = new Font("Segoe UI", 9F) }, 0, 1);
+        panel.Controls.Add(new Label { Text = title, AutoSize = true, Font = new Font("Segoe UI Semibold", 14F, FontStyle.Bold), ForeColor = HeadingColor, Margin = new Padding(0, 0, 0, 4) }, 0, 0);
+        panel.Controls.Add(new Label { Text = subtitle, AutoSize = true, ForeColor = SubtleColor, Font = new Font("Segoe UI", 9.25F) }, 0, 1);
         return panel;
     }
 
@@ -1920,9 +1964,10 @@ public sealed class MainForm : Form
         foreach (var button in new[] { _scanCatalogButton, _analyzeButton, _replaceInstallerButton, _validateButton, _buildButton, _signButton, _uploadButton, _buildAndUploadButton, _auditButton, _uninstallButton, _restoreBackupButton, _openBackupFolderButton, _manualWorkflowButton, _saveReportButton, _historyDetailsButton, _settingsButton, _browseCatalogButton })
         {
             button.FlatStyle = FlatStyle.Flat;
-            button.Font = new Font("Segoe UI", 9.5F);
-            var isPrimary = button == _scanCatalogButton || button == _validateButton || button == _buildButton || button == _uploadButton;
+            button.Font = new Font("Segoe UI", 9.75F);
+            var isPrimary = button == _scanCatalogButton || button == _validateButton || button == _buildButton || button == _uploadButton || button == _buildAndUploadButton;
             var isRecommended = button == recommendedButton;
+            var isHeroAction = button == _validateButton || button == _buildButton || button == _uploadButton || button == _buildAndUploadButton;
             if (isRecommended)
             {
                 button.BackColor = RecommendedColor;
@@ -1941,6 +1986,13 @@ public sealed class MainForm : Form
                 button.FlatAppearance.BorderColor = AccentColor;
                 button.FlatAppearance.MouseOverBackColor = Color.FromArgb(30, 82, 158);
                 button.FlatAppearance.MouseDownBackColor = Color.FromArgb(24, 66, 130);
+                if (button == _buildAndUploadButton)
+                {
+                    button.BackColor = Color.FromArgb(19, 112, 159);
+                    button.FlatAppearance.BorderColor = button.BackColor;
+                    button.FlatAppearance.MouseOverBackColor = Color.FromArgb(17, 94, 134);
+                    button.FlatAppearance.MouseDownBackColor = Color.FromArgb(14, 76, 110);
+                }
             }
             else
             {
@@ -1948,52 +2000,72 @@ public sealed class MainForm : Form
                 button.ForeColor = HeadingColor;
                 button.FlatAppearance.BorderSize = 1;
                 button.FlatAppearance.BorderColor = BorderColor;
-                button.FlatAppearance.MouseOverBackColor = Color.FromArgb(243, 246, 251);
+                button.FlatAppearance.MouseOverBackColor = PanelAltColor;
                 button.FlatAppearance.MouseDownBackColor = Color.FromArgb(225, 233, 246);
             }
-            button.Padding = new Padding(14, 8, 14, 8);
-            button.Margin = new Padding(0, 0, 10, 10);
+            button.Padding = isHeroAction ? new Padding(18, 12, 18, 12) : new Padding(14, 9, 14, 9);
+            button.Margin = new Padding(0, 0, 12, 12);
+            button.Font = isHeroAction
+                ? new Font("Segoe UI Semibold", 10F, button == recommendedButton ? FontStyle.Bold : FontStyle.Regular)
+                : button.Font;
         }
     }
 
     private Control BuildPackageSummaryCard()
     {
-        var content = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 3, BackColor = PanelColor };
-        content.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        var content = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 2, BackColor = PanelColor };
         content.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         content.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        content.Controls.Add(_selectedPackageLabel, 0, 0);
-        content.Controls.Add(_selectedPackageMetaLabel, 0, 1);
-        _packageSummaryTextBox.Font = new Font("Segoe UI", 9.5F);
-        content.Controls.Add(_packageSummaryTextBox, 0, 2);
-        return CreateSectionCard("Paquet selectionne", "Informations essentielles du paquet.", content);
+
+        var identityPanel = new Panel { Dock = DockStyle.Top, BackColor = PanelAltColor, Padding = new Padding(18, 18, 18, 16), Margin = new Padding(0, 0, 0, 14) };
+        var identityLayout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, AutoSize = true, BackColor = PanelAltColor };
+        _selectedPackageLabel.Font = new Font("Segoe UI Semibold", 18F, FontStyle.Bold);
+        _selectedPackageMetaLabel.Font = new Font("Segoe UI", 10F);
+        identityLayout.Controls.Add(_selectedPackageLabel, 0, 0);
+        identityLayout.Controls.Add(_selectedPackageMetaLabel, 0, 1);
+        identityPanel.Controls.Add(identityLayout);
+
+        var detailsPanel = new Panel { Dock = DockStyle.Fill, BackColor = Color.FromArgb(250, 252, 255), Padding = new Padding(14) };
+        _packageSummaryTextBox.Font = new Font("Segoe UI", 9.75F);
+        _packageSummaryTextBox.BackColor = detailsPanel.BackColor;
+        detailsPanel.Controls.Add(_packageSummaryTextBox);
+
+        content.Controls.Add(identityPanel, 0, 0);
+        content.Controls.Add(detailsPanel, 0, 1);
+        return CreateSectionCard("Paquet selectionne", "Une fiche technique lisible du paquet courant.", content);
     }
 
     private Control BuildAssistantCard()
     {
-        var content = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 3, BackColor = PanelColor };
-        content.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        var content = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 2, BackColor = PanelColor };
         content.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         content.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
 
-        var topRow = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, BackColor = PanelColor, Margin = new Padding(0, 0, 0, 10) };
+        var heroLayout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, AutoSize = true, BackColor = _assistantDecisionPanel.BackColor };
+        var topRow = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, BackColor = _assistantDecisionPanel.BackColor, Margin = new Padding(0, 0, 0, 12) };
+        topRow.Controls.Add(_assistantVerdictBadgeLabel);
         topRow.Controls.Add(_selectionStateLabel);
 
-        var nextStepPanel = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, AutoSize = true, BackColor = PanelColor, Margin = new Padding(0, 0, 0, 8) };
+        var nextStepPanel = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, AutoSize = true, BackColor = _assistantDecisionPanel.BackColor, Margin = new Padding(0, 0, 0, 0) };
         nextStepPanel.Controls.Add(_nextStepTitleLabel, 0, 0);
         nextStepPanel.Controls.Add(_nextStepDescriptionLabel, 0, 1);
+        heroLayout.Controls.Add(topRow, 0, 0);
+        heroLayout.Controls.Add(nextStepPanel, 0, 1);
+        _assistantDecisionPanel.Controls.Add(heroLayout);
 
-        _assistantTextBox.Font = new Font("Segoe UI", 9.5F);
+        var narrativePanel = new Panel { Dock = DockStyle.Fill, BackColor = Color.FromArgb(250, 252, 255), Padding = new Padding(14) };
+        _assistantTextBox.Font = new Font("Segoe UI", 9.9F);
+        _assistantTextBox.BackColor = narrativePanel.BackColor;
+        narrativePanel.Controls.Add(_assistantTextBox);
 
-        content.Controls.Add(topRow, 0, 0);
-        content.Controls.Add(nextStepPanel, 0, 1);
-        content.Controls.Add(_assistantTextBox, 0, 2);
-        return CreateSectionCard("Etat et prochaine action", "Comprenez si le paquet peut avancer et pourquoi.", content);
+        content.Controls.Add(_assistantDecisionPanel, 0, 0);
+        content.Controls.Add(narrativePanel, 0, 1);
+        return CreateSectionCard("Etat et prochaine action", "Le bloc de decision principal pour savoir quoi faire ensuite.", content);
     }
 
     private Control BuildActionFamiliesCard()
     {
-        var actions = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 4, BackColor = PanelColor };
+        var actions = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 4, BackColor = PanelColor, Padding = new Padding(2, 2, 2, 0) };
         actions.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25));
         actions.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25));
         actions.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25));
@@ -2012,10 +2084,16 @@ public sealed class MainForm : Form
         var panel = new Panel
         {
             Dock = DockStyle.Fill,
-            BackColor = CardHoverColor,
+            BackColor = title switch
+            {
+                "Publier" => AccentSoftColor,
+                "Verifier" => WarningSoftColor,
+                "Preparer" => Color.FromArgb(242, 247, 255),
+                _ => CardHoverColor
+            },
             BorderStyle = BorderStyle.None,
-            Margin = new Padding(0, 0, 8, 0),
-            Padding = new Padding(12, 12, 12, 8)
+            Margin = new Padding(0, 0, 12, 0),
+            Padding = new Padding(16, 16, 16, 10)
         };
 
         var layout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 3, BackColor = panel.BackColor };
@@ -2023,15 +2101,13 @@ public sealed class MainForm : Form
         layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
 
-        layout.Controls.Add(new Label { Text = title, AutoSize = true, Font = new Font("Segoe UI Semibold", 10F, FontStyle.Bold), ForeColor = HeadingColor, Margin = new Padding(0, 0, 0, 2) }, 0, 0);
-        layout.Controls.Add(new Label { Text = description, AutoSize = true, MaximumSize = new Size(250, 0), ForeColor = SubtleColor, Font = new Font("Segoe UI", 8.5F), Margin = new Padding(0, 0, 0, 6) }, 0, 1);
+        layout.Controls.Add(new Label { Text = title, AutoSize = true, Font = new Font("Segoe UI Semibold", 11F, FontStyle.Bold), ForeColor = HeadingColor, Margin = new Padding(0, 0, 0, 4) }, 0, 0);
+        layout.Controls.Add(new Label { Text = description, AutoSize = true, MaximumSize = new Size(260, 0), ForeColor = InfoColor, Font = new Font("Segoe UI", 8.9F), Margin = new Padding(0, 0, 0, 10) }, 0, 1);
 
         var buttonsPanel = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoScroll = true, WrapContents = true, BackColor = panel.BackColor, Padding = new Padding(0) };
         foreach (var button in buttons)
         {
-            button.Margin = new Padding(0, 0, 4, 4);
-            button.Padding = new Padding(8, 4, 8, 4);
-            button.Font = new Font("Segoe UI", 8.5F);
+            button.Margin = new Padding(0, 0, 8, 8);
         }
         buttonsPanel.Controls.AddRange(buttons);
         layout.Controls.Add(buttonsPanel, 0, 2);
@@ -2043,42 +2119,45 @@ public sealed class MainForm : Form
     private Control BuildActivityArea()
     {
         _activityTabControl.DrawMode = TabDrawMode.OwnerDrawFixed;
-        _activityTabControl.ItemSize = new Size(120, 34);
+        _activityTabControl.ItemSize = new Size(150, 40);
         _activityTabControl.SizeMode = TabSizeMode.Fixed;
         _activityTabControl.DrawItem += (sender, e) =>
         {
             var tabControl = (TabControl)sender!;
             var isSelected = e.Index == tabControl.SelectedIndex;
             var tabPage = tabControl.TabPages[e.Index];
-            using var bgBrush = new SolidBrush(isSelected ? PanelColor : SurfaceColor);
+            using var bgBrush = new SolidBrush(isSelected ? PanelColor : Color.FromArgb(241, 245, 251));
             e.Graphics.FillRectangle(bgBrush, e.Bounds);
             using var textBrush = new SolidBrush(isSelected ? AccentColor : InfoColor);
-            using var font = new Font("Segoe UI Semibold", 9.5F, isSelected ? FontStyle.Bold : FontStyle.Regular);
+            using var font = new Font("Segoe UI Semibold", 9.75F, isSelected ? FontStyle.Bold : FontStyle.Regular);
             var textSize = e.Graphics.MeasureString(tabPage.Text, font);
             var textX = e.Bounds.X + (e.Bounds.Width - (int)textSize.Width) / 2;
             var textY = e.Bounds.Y + (e.Bounds.Height - (int)textSize.Height) / 2;
             e.Graphics.DrawString(tabPage.Text, font, textBrush, textX, textY);
             if (isSelected)
             {
-                using var accentPen = new Pen(AccentColor, 2);
-                e.Graphics.DrawLine(accentPen, e.Bounds.Left + 4, e.Bounds.Bottom - 1, e.Bounds.Right - 4, e.Bounds.Bottom - 1);
+                using var accentPen = new Pen(AccentColor, 3);
+                e.Graphics.DrawLine(accentPen, e.Bounds.Left + 10, e.Bounds.Bottom - 1, e.Bounds.Right - 10, e.Bounds.Bottom - 1);
             }
         };
 
         _activityTabControl.TabPages.Clear();
-        _activityTabControl.TabPages.Add(new TabPage("Journal") { BackColor = PanelColor, Padding = new Padding(12) });
+        _activityTabControl.TabPages.Add(new TabPage("Journal") { BackColor = PanelColor, Padding = new Padding(16) });
         _logsTextBox.Font = new Font("Consolas", 9.5F);
+        _logsTextBox.BackColor = PanelAltColor;
         _activityTabControl.TabPages[0].Controls.Add(_logsTextBox);
-        _activityTabControl.TabPages.Add(new TabPage("Historique") { BackColor = PanelColor, Padding = new Padding(12) });
+        _activityTabControl.TabPages.Add(new TabPage("Historique") { BackColor = PanelColor, Padding = new Padding(16) });
         _activityTabControl.TabPages[1].Controls.Add(_historyGrid);
-        _activityTabControl.TabPages.Add(new TabPage("Details paquet") { BackColor = PanelColor, Padding = new Padding(12) });
+        _activityTabControl.TabPages.Add(new TabPage("Details paquet") { BackColor = PanelColor, Padding = new Padding(16) });
         _packageDetailsTextBox.Font = new Font("Segoe UI", 9.5F);
+        _packageDetailsTextBox.BackColor = PanelAltColor;
         _activityTabControl.TabPages[2].Controls.Add(_packageDetailsTextBox);
-        _activityTabControl.TabPages.Add(new TabPage("Details readiness") { BackColor = PanelColor, Padding = new Padding(12) });
+        _activityTabControl.TabPages.Add(new TabPage("Details readiness") { BackColor = PanelColor, Padding = new Padding(16) });
         _readinessTextBox.Font = new Font("Segoe UI", 9.5F);
+        _readinessTextBox.BackColor = PanelAltColor;
         _activityTabControl.TabPages[3].Controls.Add(_readinessTextBox);
 
-        return CreateSectionCard("Journal et details", "Journal et historique en premier, details techniques dans les autres onglets.", _activityTabControl);
+        return CreateSectionCard("Journal et details", "Journal, historique et details techniques avec une lecture plus confortable.", _activityTabControl);
     }
 
     private static string BuildSelectionStateLabel(ValidationResult? validationResult)
@@ -2099,19 +2178,19 @@ public sealed class MainForm : Form
     private static string BuildPackageSummaryText(PackageCatalogItem item, ValidationResult? validationResult)
     {
         var builder = new StringBuilder();
-        builder.AppendLine($"Nom affiche: {item.VisibleName}");
-        builder.AppendLine($"Version: {(string.IsNullOrWhiteSpace(item.Version) ? "non detectee" : item.Version)}");
-        builder.AppendLine($"Type d'installeur: {item.Category.ToString().ToUpperInvariant()}");
-        builder.AppendLine($"Niveau de maturite: {item.Maturity}");
-        builder.AppendLine($"Derniere modification: {item.LastModifiedUtc.ToLocalTime():yyyy-MM-dd HH:mm}");
-        builder.AppendLine($"Installeur principal: {item.PrimaryInstallerName}");
-        builder.AppendLine($"Dossier: {item.PackageFolder}");
+        builder.AppendLine($"Nom technique          : {item.PackageId}");
+        builder.AppendLine($"Version                : {(string.IsNullOrWhiteSpace(item.Version) ? "non detectee" : item.Version)}");
+        builder.AppendLine($"Type d'installeur      : {item.Category.ToString().ToUpperInvariant()}");
+        builder.AppendLine($"Maturite               : {item.Maturity}");
+        builder.AppendLine($"Derniere modification  : {item.LastModifiedUtc.ToLocalTime():yyyy-MM-dd HH:mm}");
+        builder.AppendLine($"Installeur principal   : {item.PrimaryInstallerName}");
+        builder.AppendLine($"Dossier source         : {item.PackageFolder}");
 
         if (validationResult is not null)
         {
             builder.AppendLine();
-            builder.AppendLine($"Etat actuel: {validationResult.VerdictLabel}");
-            builder.AppendLine($"Resume: {validationResult.Summary}");
+            builder.AppendLine($"Etat actuel            : {validationResult.VerdictLabel}");
+            builder.AppendLine($"Resume                 : {validationResult.Summary}");
         }
 
         return builder.ToString();
@@ -2127,10 +2206,10 @@ public sealed class MainForm : Form
         var builder = new StringBuilder();
         builder.AppendLine(validationResult.Summary);
         builder.AppendLine();
-        builder.AppendLine($"Construire le .wapt: {(validationResult.BuildPossible ? "oui" : "non")}");
-        builder.AppendLine($"Upload direct: {(validationResult.UploadPossible ? "oui" : "non")}");
-        builder.AppendLine($"Verifier sur un poste: {(validationResult.AuditPossible ? "oui" : "non")}");
-        builder.AppendLine($"Desinstaller du poste: {(validationResult.UninstallPossible ? "oui" : "non")}");
+        builder.AppendLine($"Construire le .wapt   : {(validationResult.BuildPossible ? "oui" : "non")}");
+        builder.AppendLine($"Upload direct         : {(validationResult.UploadPossible ? "oui" : "non")}");
+        builder.AppendLine($"Verifier sur un poste : {(validationResult.AuditPossible ? "oui" : "non")}");
+        builder.AppendLine($"Desinstaller du poste : {(validationResult.UninstallPossible ? "oui" : "non")}");
 
         if (validationResult.Issues.Count > 0)
         {
