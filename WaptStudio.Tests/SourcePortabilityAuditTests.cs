@@ -77,6 +77,8 @@ public sealed class SourcePortabilityAuditTests
         if (segments.Any(segment => string.Equals(segment, "bin", StringComparison.OrdinalIgnoreCase)
             || string.Equals(segment, "obj", StringComparison.OrdinalIgnoreCase)
             || string.Equals(segment, ".git", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(segment, ".venv", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(segment, "venv", StringComparison.OrdinalIgnoreCase)
             || string.Equals(segment, "artifacts", StringComparison.OrdinalIgnoreCase)
             || string.Equals(segment, "dist", StringComparison.OrdinalIgnoreCase)))
         {

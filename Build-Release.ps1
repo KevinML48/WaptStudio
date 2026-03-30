@@ -56,6 +56,7 @@ try {
 
     Copy-Item (Join-Path $scriptRoot 'README.md') $distRoot -Force
     Copy-Item (Join-Path $scriptRoot 'Start-WaptStudio.ps1') $distRoot -Force
+    Copy-Item (Join-Path $scriptRoot 'Start-WaptStudio.cmd') $distRoot -Force
     Copy-Item (Join-Path $scriptRoot 'Build-Release.ps1') $distRoot -Force
 
     Write-Host "Publication self-contained terminee dans $publishPath" -ForegroundColor Green
