@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System;
 
 namespace WaptStudio.Core.Models;
 
@@ -8,7 +9,17 @@ public sealed class PackageInfo
 
     public string? PackageName { get; set; }
 
+    public string? VisibleName { get; set; }
+
+    public string? Description { get; set; }
+
+    public string? DescriptionFr { get; set; }
+
     public string? Version { get; set; }
+
+    public string? TargetOs { get; set; }
+
+    public string? Architecture { get; set; }
 
     public string? SetupPyPath { get; set; }
 
@@ -19,6 +30,14 @@ public sealed class PackageInfo
     public string? InstallerType { get; set; }
 
     public string? ReferencedInstallerName { get; set; }
+
+    public PackageCategory Category { get; set; } = PackageCategory.Other;
+
+    public string Maturity { get; set; } = "Inconnue";
+
+    public DateTime LastModifiedUtc { get; set; }
+
+    public string? ExpectedWaptFileName { get; set; }
 
     public bool HasSetupPy => !string.IsNullOrWhiteSpace(SetupPyPath);
 

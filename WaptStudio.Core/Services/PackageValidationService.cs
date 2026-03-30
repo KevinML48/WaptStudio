@@ -22,7 +22,7 @@ public sealed class PackageValidationService : IPackageValidationService
         _settingsService = settingsService;
     }
 
-    public async Task<ValidationResult> ValidateAsync(string packageFolder, PackageInfo? packageInfo = null, CancellationToken cancellationToken = default)
+    public async Task<ValidationResult> ValidateAsync(string packageFolder, PackageInfo? packageInfo = null, bool includeWaptValidation = true, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(packageFolder) || !Directory.Exists(packageFolder))
         {
@@ -36,9 +36,12 @@ public sealed class PackageValidationService : IPackageValidationService
 
         result.AddOk("Dossier paquet accessible.");
 
+        var hasBlockingError = false;
+
         if (!packageInfo.HasSetupPy)
         {
             result.AddError("Le fichier setup.py est obligatoire.");
+            hasBlockingError = true;
         }
         else
         {
@@ -48,6 +51,7 @@ public sealed class PackageValidationService : IPackageValidationService
         if (!packageInfo.HasControlFile)
         {
             result.AddError("Le fichier control est obligatoire pour un flux WAPT exploitable.");
+            hasBlockingError = true;
         }
         else
         {
@@ -57,6 +61,7 @@ public sealed class PackageValidationService : IPackageValidationService
         if (!packageInfo.HasInstaller)
         {
             result.AddError("Aucun fichier MSI/EXE n'est associe au paquet.");
+            hasBlockingError = true;
         }
         else
         {
@@ -73,6 +78,7 @@ public sealed class PackageValidationService : IPackageValidationService
             else
             {
                 result.AddError($"Installeur reference introuvable dans le dossier: {packageInfo.ReferencedInstallerName}");
+                hasBlockingError = true;
             }
         }
         else
@@ -91,7 +97,7 @@ public sealed class PackageValidationService : IPackageValidationService
 
         if (string.IsNullOrWhiteSpace(packageInfo.Version))
         {
-            result.AddWarning("La version du paquet n'a pas ete detectee.");
+            result.AddWarning("La version du paquet n'a pas ete detectee ou ne peut pas etre fiabilisee.");
         }
         else
         {
@@ -101,6 +107,7 @@ public sealed class PackageValidationService : IPackageValidationService
         if (string.IsNullOrWhiteSpace(settings.WaptExecutablePath))
         {
             result.AddError("Le chemin WAPT n'est pas configure.");
+            hasBlockingError = true;
         }
 
         var backupRoot = AppPaths.ResolveBackupsDirectory(settings);
@@ -112,6 +119,7 @@ public sealed class PackageValidationService : IPackageValidationService
         catch (Exception ex)
         {
             result.AddError($"Dossier de sauvegarde inaccessible: {ex.Message}");
+            hasBlockingError = true;
         }
 
         if (CanWriteToDirectory(packageFolder, out var writeMessage))
@@ -121,6 +129,7 @@ public sealed class PackageValidationService : IPackageValidationService
         else
         {
             result.AddError(writeMessage);
+            hasBlockingError = true;
         }
 
         var availabilityResult = await _waptCommandService.CheckWaptAvailabilityAsync(cancellationToken).ConfigureAwait(false);
@@ -133,27 +142,72 @@ public sealed class PackageValidationService : IPackageValidationService
             result.AddError(string.IsNullOrWhiteSpace(availabilityResult.StandardError)
                 ? "WAPT indisponible."
                 : availabilityResult.StandardError);
+            hasBlockingError = true;
         }
 
-        var commandResult = await _waptCommandService.ValidatePackageWithWaptAsync(packageFolder, cancellationToken).ConfigureAwait(false);
-        result.CommandResult = commandResult;
+        if (includeWaptValidation)
+        {
+            var commandResult = await _waptCommandService.ValidatePackageWithWaptAsync(packageFolder, cancellationToken).ConfigureAwait(false);
+            result.CommandResult = commandResult;
 
-        if (commandResult.IsDryRun)
-        {
-            result.AddInfo(commandResult.StandardOutput);
+            if (commandResult.IsDryRun)
+            {
+                result.AddInfo(commandResult.StandardOutput);
+            }
+            else if (commandResult.IsSkipped)
+            {
+                result.AddWarning(commandResult.StandardError);
+            }
+            else if (!commandResult.IsSuccess)
+            {
+                result.AddError(commandResult.StandardError.Length > 0 ? commandResult.StandardError : commandResult.Summary);
+                hasBlockingError = true;
+            }
+            else if (!string.IsNullOrWhiteSpace(commandResult.StandardOutput))
+            {
+                result.AddOk("Validation WAPT terminee avec succes.");
+            }
         }
-        else if (commandResult.IsSkipped)
+
+        var extraExecutables = packageInfo.DetectedExecutables
+            .Where(path => !string.Equals(path, packageInfo.InstallerPath, StringComparison.OrdinalIgnoreCase))
+            .Select(Path.GetFileName)
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (extraExecutables.Count > 0)
         {
-            result.AddWarning(commandResult.StandardError);
+            result.AddWarning($"Des installateurs supplementaires existent encore dans le paquet: {string.Join(", ", extraExecutables)}");
         }
-        else if (!commandResult.IsSuccess)
+
+        if (string.IsNullOrWhiteSpace(packageInfo.VisibleName))
         {
-            result.AddError(commandResult.StandardError.Length > 0 ? commandResult.StandardError : commandResult.Summary);
+            result.AddWarning("Le champ name n'est pas renseigne de facon fiable.");
         }
-        else if (!string.IsNullOrWhiteSpace(commandResult.StandardOutput))
+
+        if (string.IsNullOrWhiteSpace(packageInfo.Description) || string.IsNullOrWhiteSpace(packageInfo.DescriptionFr))
         {
-            result.AddOk("Validation WAPT terminee avec succes.");
+            result.AddWarning("Les descriptions ne sont pas completes pour toutes les langues attendues.");
         }
+
+        ValidateVersionCoherence(packageInfo, result);
+
+        result.BuildPossible = !hasBlockingError;
+        result.UploadPossible = result.BuildPossible && settings.EnableUpload && !string.IsNullOrWhiteSpace(packageInfo.ExpectedWaptFileName);
+        result.AuditPossible = !hasBlockingError && !string.IsNullOrWhiteSpace(packageInfo.PackageName) && !string.IsNullOrWhiteSpace(settings.AuditPackageArguments);
+        result.UninstallPossible = !hasBlockingError && !string.IsNullOrWhiteSpace(packageInfo.PackageName) && !string.IsNullOrWhiteSpace(settings.UninstallPackageArguments);
+        result.Verdict = hasBlockingError
+            ? ReadinessVerdict.Blocked
+            : result.Issues.Any(issue => string.Equals(issue.Severity, "WARNING", StringComparison.OrdinalIgnoreCase))
+                ? ReadinessVerdict.ReadyWithWarnings
+                : ReadinessVerdict.ReadyForBuildUpload;
+        result.Summary = result.Verdict switch
+        {
+            ReadinessVerdict.ReadyForBuildUpload => "Le paquet est coherent pour une construction. Les actions poste et l'upload direct doivent encore etre interpretes selon leur configuration et les essais reels deja effectues.",
+            ReadinessVerdict.ReadyWithWarnings => "Le paquet peut encore avancer, mais il reste des points d'attention. Les actions disponibles ne doivent pas etre lues comme deja testees ou validees.",
+            _ => "Le paquet est bloque tant que les erreurs metier et techniques ne sont pas corrigees."
+        };
 
         return result;
     }
@@ -173,6 +227,31 @@ public sealed class PackageValidationService : IPackageValidationService
         {
             message = $"Ecriture impossible dans le dossier paquet: {ex.Message}";
             return false;
+        }
+    }
+
+    private static void ValidateVersionCoherence(PackageInfo packageInfo, ValidationResult result)
+    {
+        if (string.IsNullOrWhiteSpace(packageInfo.Version))
+        {
+            return;
+        }
+
+        var folderName = Path.GetFileName(packageInfo.PackageFolder.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+
+        if (!string.IsNullOrWhiteSpace(folderName) && !string.IsNullOrWhiteSpace(packageInfo.Version))
+        {
+            if (!folderName.Contains(packageInfo.Version, StringComparison.OrdinalIgnoreCase)
+                && !string.IsNullOrWhiteSpace(packageInfo.PackageName)
+                && folderName.Contains(packageInfo.PackageName, StringComparison.OrdinalIgnoreCase))
+            {
+                result.AddWarning($"Le nom du dossier ({folderName}) ne contient pas la version detectee ({packageInfo.Version}).");
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(packageInfo.ExpectedWaptFileName))
+        {
+            result.AddInfo($".wapt attendu: {packageInfo.ExpectedWaptFileName}");
         }
     }
 }

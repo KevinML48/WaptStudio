@@ -11,5 +11,6 @@ public interface ICommandExecutionService
         string arguments,
         string workingDirectory,
         int timeoutSeconds,
+        CommandExecutionOptions? options = null,
         CancellationToken cancellationToken = default);
 }

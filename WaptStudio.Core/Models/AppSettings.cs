@@ -2,6 +2,12 @@ namespace WaptStudio.Core.Models;
 
 public sealed class AppSettings
 {
+    public string? CatalogRootFolder { get; set; }
+
+    public bool CatalogScanRecursively { get; set; } = true;
+
+    public int CatalogSemiRecursiveDepth { get; set; } = 2;
+
     public string WaptExecutablePath { get; set; } = "wapt-get.exe";
 
     public int CommandTimeoutSeconds { get; set; } = 300;
@@ -12,9 +18,13 @@ public sealed class AppSettings
 
     public string BuildPackageArguments { get; set; } = "build-package {packageFolder}";
 
-    public string SignPackageArguments { get; set; } = "sign-package --private-key {signingKeyPath} {packageFolder}";
+    public string SignPackageArguments { get; set; } = "sign-package {packageFolder}";
 
-    public string UploadPackageArguments { get; set; } = "upload-package {overwriteFlag} {repositoryOption} {packageFolder}";
+    public string UploadPackageArguments { get; set; } = "upload-package {waptFilePath}";
+
+    public string AuditPackageArguments { get; set; } = "audit {packageId}";
+
+    public string UninstallPackageArguments { get; set; } = "remove {packageId}";
 
     public bool DryRunEnabled { get; set; }
 
@@ -22,11 +32,15 @@ public sealed class AppSettings
 
     public string? LogsDirectory { get; set; }
 
+    public string? CacheDirectory { get; set; }
+
     public string? BackupsDirectory { get; set; }
 
     public bool EnableSigning { get; set; } = true;
 
     public bool EnableUpload { get; set; } = false;
+
+    public bool PreferWaptConsolePublish { get; set; } = true;
 
     public bool UploadOverwriteExisting { get; set; } = false;
 
@@ -35,4 +49,6 @@ public sealed class AppSettings
     public string? UploadRepositoryUrl { get; set; }
 
     public string? DefaultPackageFolder { get; set; }
+
+    public bool HasCompletedFirstRunExperience { get; set; }
 }

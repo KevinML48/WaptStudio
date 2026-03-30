@@ -1,25 +1,34 @@
 using System;
+using System.Drawing;
 using System.IO;
 using System.Windows.Forms;
+using WaptStudio.Core.Configuration;
 using WaptStudio.Core.Models;
 
 namespace WaptStudio.App.Forms;
 
 public sealed class SettingsForm : Form
 {
+    private readonly TextBox _catalogRootFolderTextBox = new() { Dock = DockStyle.Fill };
+    private readonly CheckBox _catalogRecursiveCheckBox = new() { Text = "Scan recursif complet", AutoSize = true };
+    private readonly NumericUpDown _catalogDepthInput = new() { Dock = DockStyle.Fill, Minimum = 0, Maximum = 10 };
     private readonly TextBox _waptPathTextBox = new() { Dock = DockStyle.Fill };
     private readonly NumericUpDown _timeoutInput = new() { Dock = DockStyle.Fill, Minimum = 5, Maximum = 7200 };
     private readonly CheckBox _dryRunCheckBox = new() { Text = "Activer le dry-run", AutoSize = true };
     private readonly CheckBox _backupCheckBox = new() { Text = "Activer les sauvegardes", AutoSize = true };
     private readonly CheckBox _signingCheckBox = new() { Text = "Activer la signature", AutoSize = true };
     private readonly CheckBox _uploadCheckBox = new() { Text = "Activer l'upload", AutoSize = true };
+    private readonly CheckBox _preferConsolePublishCheckBox = new() { Text = "Preferer la publication via WAPT Console", AutoSize = true };
     private readonly CheckBox _overwriteUploadCheckBox = new() { Text = "Autoriser l'ecrasement a l'upload", AutoSize = true };
     private readonly TextBox _availabilityArgsTextBox = new() { Dock = DockStyle.Fill };
     private readonly TextBox _validateArgsTextBox = new() { Dock = DockStyle.Fill };
     private readonly TextBox _buildArgsTextBox = new() { Dock = DockStyle.Fill };
     private readonly TextBox _signArgsTextBox = new() { Dock = DockStyle.Fill };
     private readonly TextBox _uploadArgsTextBox = new() { Dock = DockStyle.Fill };
+    private readonly TextBox _auditArgsTextBox = new() { Dock = DockStyle.Fill };
+    private readonly TextBox _uninstallArgsTextBox = new() { Dock = DockStyle.Fill };
     private readonly TextBox _logsDirectoryTextBox = new() { Dock = DockStyle.Fill };
+    private readonly TextBox _cacheDirectoryTextBox = new() { Dock = DockStyle.Fill };
     private readonly TextBox _backupsDirectoryTextBox = new() { Dock = DockStyle.Fill };
     private readonly TextBox _signingKeyTextBox = new() { Dock = DockStyle.Fill };
     private readonly TextBox _uploadRepositoryTextBox = new() { Dock = DockStyle.Fill };
@@ -33,6 +42,8 @@ public sealed class SettingsForm : Form
         Width = 980;
         Height = 700;
         StartPosition = FormStartPosition.CenterParent;
+        BackColor = Color.FromArgb(243, 245, 249);
+        Font = new Font("Segoe UI", 9.5F, FontStyle.Regular);
 
         InitializeComponent();
         Bind(Settings);
@@ -47,26 +58,34 @@ public sealed class SettingsForm : Form
             Dock = DockStyle.Fill,
             ColumnCount = 3,
             AutoScroll = true,
-            Padding = new Padding(12)
+            Padding = new Padding(20),
+            BackColor = Color.FromArgb(243, 245, 249)
         };
         root.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         root.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
 
         var row = 0;
+        AddBrowseRow(root, row++, "Racine catalogue paquets", _catalogRootFolderTextBox, BrowseCatalogRootFolder);
+        AddSimpleRow(root, row++, "Scan recursif", _catalogRecursiveCheckBox);
+        AddSimpleRow(root, row++, "Profondeur semi-recursive", _catalogDepthInput);
         AddBrowseRow(root, row++, "Chemin WAPT", _waptPathTextBox, BrowseWaptExecutable);
         AddSimpleRow(root, row++, "Timeout global (secondes)", _timeoutInput);
         AddSimpleRow(root, row++, "Dry-run", _dryRunCheckBox);
         AddSimpleRow(root, row++, "Backups", _backupCheckBox);
         AddSimpleRow(root, row++, "Signature", _signingCheckBox);
         AddSimpleRow(root, row++, "Upload", _uploadCheckBox);
+        AddSimpleRow(root, row++, "Publication recommandee", _preferConsolePublishCheckBox);
         AddSimpleRow(root, row++, "Ecrasement upload", _overwriteUploadCheckBox);
         AddSimpleRow(root, row++, "Arguments test WAPT", _availabilityArgsTextBox);
         AddSimpleRow(root, row++, "Arguments validation", _validateArgsTextBox);
         AddSimpleRow(root, row++, "Arguments build", _buildArgsTextBox);
         AddSimpleRow(root, row++, "Arguments sign", _signArgsTextBox);
         AddSimpleRow(root, row++, "Arguments upload", _uploadArgsTextBox);
+        AddSimpleRow(root, row++, "Arguments audit", _auditArgsTextBox);
+        AddSimpleRow(root, row++, "Arguments uninstall", _uninstallArgsTextBox);
         AddBrowseRow(root, row++, "Dossier logs", _logsDirectoryTextBox, BrowseLogsDirectory);
+        AddBrowseRow(root, row++, "Dossier cache", _cacheDirectoryTextBox, BrowseCacheDirectory);
         AddBrowseRow(root, row++, "Dossier backups", _backupsDirectoryTextBox, BrowseBackupsDirectory);
         AddBrowseRow(root, row++, "Cle de signature", _signingKeyTextBox, BrowseSigningKey);
         AddSimpleRow(root, row++, "Repository upload", _uploadRepositoryTextBox);
@@ -76,7 +95,7 @@ public sealed class SettingsForm : Form
         {
             AutoSize = true,
             Dock = DockStyle.Fill,
-            Text = "Placeholders disponibles dans les arguments: {packageFolder}, {signingKeyPath}, {uploadRepositoryUrl}, {repositoryOption}, {overwriteFlag}"
+            Text = $"Chemin WAPT: laissez 'wapt-get.exe' pour l'auto-detection. Donnees locales: {AppPaths.BaseDirectory}. Placeholders disponibles: {{packageFolder}}, {{waptFilePath}}, {{packageId}}, {{signingKeyPath}}, {{uploadRepositoryUrl}}, {{repositoryOption}}, {{overwriteFlag}}"
         };
         root.Controls.Add(helpLabel, 0, row);
         root.SetColumnSpan(helpLabel, 3);
@@ -85,12 +104,17 @@ public sealed class SettingsForm : Form
         {
             Dock = DockStyle.Bottom,
             FlowDirection = FlowDirection.RightToLeft,
-            Padding = new Padding(12)
+            Padding = new Padding(20, 12, 20, 12),
+            BackColor = Color.FromArgb(243, 245, 249)
         };
 
-        var saveButton = new Button { Text = "Enregistrer", AutoSize = true };
+        var saveButton = new Button { Text = "Enregistrer", AutoSize = true, FlatStyle = FlatStyle.Flat, BackColor = Color.FromArgb(37, 99, 186), ForeColor = Color.White, Font = new Font("Segoe UI", 9.5F, FontStyle.Bold) };
+        saveButton.FlatAppearance.BorderSize = 0;
+        saveButton.Padding = new Padding(14, 8, 14, 8);
         saveButton.Click += SaveSettings;
-        var cancelButton = new Button { Text = "Annuler", AutoSize = true, DialogResult = DialogResult.Cancel };
+        var cancelButton = new Button { Text = "Annuler", AutoSize = true, DialogResult = DialogResult.Cancel, FlatStyle = FlatStyle.Flat, BackColor = Color.White, ForeColor = Color.FromArgb(15, 23, 42) };
+        cancelButton.FlatAppearance.BorderColor = Color.FromArgb(228, 233, 240);
+        cancelButton.Padding = new Padding(14, 8, 14, 8);
 
         buttonsPanel.Controls.Add(saveButton);
         buttonsPanel.Controls.Add(cancelButton);
@@ -103,19 +127,26 @@ public sealed class SettingsForm : Form
 
     private void Bind(AppSettings settings)
     {
+        _catalogRootFolderTextBox.Text = settings.CatalogRootFolder ?? string.Empty;
+        _catalogRecursiveCheckBox.Checked = settings.CatalogScanRecursively;
+        _catalogDepthInput.Value = settings.CatalogSemiRecursiveDepth;
         _waptPathTextBox.Text = settings.WaptExecutablePath;
         _timeoutInput.Value = settings.CommandTimeoutSeconds;
         _dryRunCheckBox.Checked = settings.DryRunEnabled;
         _backupCheckBox.Checked = settings.CreateBackups;
         _signingCheckBox.Checked = settings.EnableSigning;
         _uploadCheckBox.Checked = settings.EnableUpload;
+        _preferConsolePublishCheckBox.Checked = settings.PreferWaptConsolePublish;
         _overwriteUploadCheckBox.Checked = settings.UploadOverwriteExisting;
         _availabilityArgsTextBox.Text = settings.AvailabilityArguments;
         _validateArgsTextBox.Text = settings.ValidatePackageArguments;
         _buildArgsTextBox.Text = settings.BuildPackageArguments;
         _signArgsTextBox.Text = settings.SignPackageArguments;
         _uploadArgsTextBox.Text = settings.UploadPackageArguments;
+        _auditArgsTextBox.Text = settings.AuditPackageArguments;
+        _uninstallArgsTextBox.Text = settings.UninstallPackageArguments;
         _logsDirectoryTextBox.Text = settings.LogsDirectory ?? string.Empty;
+        _cacheDirectoryTextBox.Text = settings.CacheDirectory ?? string.Empty;
         _backupsDirectoryTextBox.Text = settings.BackupsDirectory ?? string.Empty;
         _signingKeyTextBox.Text = settings.SigningKeyPath ?? string.Empty;
         _uploadRepositoryTextBox.Text = settings.UploadRepositoryUrl ?? string.Empty;
@@ -126,23 +157,31 @@ public sealed class SettingsForm : Form
     {
         Settings = new AppSettings
         {
-            WaptExecutablePath = _waptPathTextBox.Text.Trim(),
+            WaptExecutablePath = string.IsNullOrWhiteSpace(_waptPathTextBox.Text) ? CommandExecutionResult.DefaultExecutableName : _waptPathTextBox.Text.Trim(),
+            CatalogRootFolder = EmptyToNull(_catalogRootFolderTextBox.Text),
+            CatalogScanRecursively = _catalogRecursiveCheckBox.Checked,
+            CatalogSemiRecursiveDepth = (int)_catalogDepthInput.Value,
             CommandTimeoutSeconds = (int)_timeoutInput.Value,
             DryRunEnabled = _dryRunCheckBox.Checked,
             CreateBackups = _backupCheckBox.Checked,
             EnableSigning = _signingCheckBox.Checked,
             EnableUpload = _uploadCheckBox.Checked,
+            PreferWaptConsolePublish = _preferConsolePublishCheckBox.Checked,
             UploadOverwriteExisting = _overwriteUploadCheckBox.Checked,
             AvailabilityArguments = _availabilityArgsTextBox.Text.Trim(),
             ValidatePackageArguments = _validateArgsTextBox.Text.Trim(),
             BuildPackageArguments = _buildArgsTextBox.Text.Trim(),
             SignPackageArguments = _signArgsTextBox.Text.Trim(),
             UploadPackageArguments = _uploadArgsTextBox.Text.Trim(),
+            AuditPackageArguments = _auditArgsTextBox.Text.Trim(),
+            UninstallPackageArguments = _uninstallArgsTextBox.Text.Trim(),
             LogsDirectory = EmptyToNull(_logsDirectoryTextBox.Text),
+            CacheDirectory = EmptyToNull(_cacheDirectoryTextBox.Text),
             BackupsDirectory = EmptyToNull(_backupsDirectoryTextBox.Text),
             SigningKeyPath = EmptyToNull(_signingKeyTextBox.Text),
             UploadRepositoryUrl = EmptyToNull(_uploadRepositoryTextBox.Text),
-            DefaultPackageFolder = EmptyToNull(_defaultPackageFolderTextBox.Text)
+            DefaultPackageFolder = EmptyToNull(_defaultPackageFolderTextBox.Text),
+            HasCompletedFirstRunExperience = Settings.HasCompletedFirstRunExperience
         };
 
         DialogResult = DialogResult.OK;
@@ -165,7 +204,11 @@ public sealed class SettingsForm : Form
 
     private void BrowseLogsDirectory(object? sender, EventArgs e) => BrowseFolder(_logsDirectoryTextBox, "Selectionner le dossier de logs");
 
+    private void BrowseCacheDirectory(object? sender, EventArgs e) => BrowseFolder(_cacheDirectoryTextBox, "Selectionner le dossier de cache");
+
     private void BrowseBackupsDirectory(object? sender, EventArgs e) => BrowseFolder(_backupsDirectoryTextBox, "Selectionner le dossier de backups");
+
+    private void BrowseCatalogRootFolder(object? sender, EventArgs e) => BrowseFolder(_catalogRootFolderTextBox, "Selectionner le dossier racine des paquets CD48");
 
     private void BrowseDefaultPackageFolder(object? sender, EventArgs e) => BrowseFolder(_defaultPackageFolderTextBox, "Selectionner le dossier paquet par defaut");
 
@@ -173,8 +216,8 @@ public sealed class SettingsForm : Form
     {
         using var dialog = new OpenFileDialog
         {
-            Filter = "Cles (*.pem;*.key)|*.pem;*.key|Tous les fichiers (*.*)|*.*",
-            Title = "Selectionner la cle de signature"
+            Filter = "Certificats WAPT (*.p12;*.pem)|*.p12;*.pem|Tous les fichiers (*.*)|*.*",
+            Title = "Selectionner le certificat de signature WAPT"
         };
 
         if (dialog.ShowDialog(this) == DialogResult.OK)
@@ -221,6 +264,9 @@ public sealed class SettingsForm : Form
 
     private static AppSettings Clone(AppSettings source) => new()
     {
+        CatalogRootFolder = source.CatalogRootFolder,
+        CatalogScanRecursively = source.CatalogScanRecursively,
+        CatalogSemiRecursiveDepth = source.CatalogSemiRecursiveDepth,
         WaptExecutablePath = source.WaptExecutablePath,
         CommandTimeoutSeconds = source.CommandTimeoutSeconds,
         AvailabilityArguments = source.AvailabilityArguments,
@@ -228,15 +274,20 @@ public sealed class SettingsForm : Form
         BuildPackageArguments = source.BuildPackageArguments,
         SignPackageArguments = source.SignPackageArguments,
         UploadPackageArguments = source.UploadPackageArguments,
+        AuditPackageArguments = source.AuditPackageArguments,
+        UninstallPackageArguments = source.UninstallPackageArguments,
         DryRunEnabled = source.DryRunEnabled,
         CreateBackups = source.CreateBackups,
         LogsDirectory = source.LogsDirectory,
+        CacheDirectory = source.CacheDirectory,
         BackupsDirectory = source.BackupsDirectory,
         EnableSigning = source.EnableSigning,
         EnableUpload = source.EnableUpload,
+        PreferWaptConsolePublish = source.PreferWaptConsolePublish,
         UploadOverwriteExisting = source.UploadOverwriteExisting,
         SigningKeyPath = source.SigningKeyPath,
         UploadRepositoryUrl = source.UploadRepositoryUrl,
-        DefaultPackageFolder = source.DefaultPackageFolder
+        DefaultPackageFolder = source.DefaultPackageFolder,
+        HasCompletedFirstRunExperience = source.HasCompletedFirstRunExperience
     };
 }
