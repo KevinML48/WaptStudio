@@ -7,6 +7,7 @@ WaptStudio est un outil Windows local en WinForms, developpe en C# sur .NET 10, 
 Pour suivre clairement toutes les etapes importantes du projet directement depuis le depot GitHub:
 
 - consultez [PHASES.md](PHASES.md) pour le detail des phases et des jalons
+- consultez [REPOSITORY_HISTORY.md](REPOSITORY_HISTORY.md) pour un index rapide des tags et des points d'entree GitHub
 - utilisez les tags Git du depot pour retrouver rapidement les points de passage majeurs
 
 Le produit final est centre sur un seul objectif metier:
