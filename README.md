@@ -2,6 +2,13 @@
 
 WaptStudio est un outil Windows local en WinForms, developpe en C# sur .NET 10, pour gerer les paquets CD48 de maniere claire, securisee et exploitable.
 
+## Chronologie du projet
+
+Pour suivre clairement toutes les etapes importantes du projet directement depuis le depot GitHub:
+
+- consultez [PHASES.md](PHASES.md) pour le detail des phases et des jalons
+- utilisez les tags Git du depot pour retrouver rapidement les points de passage majeurs
+
 Le produit final est centre sur un seul objectif metier:
 
 - charger un dossier racine de paquets CD48
