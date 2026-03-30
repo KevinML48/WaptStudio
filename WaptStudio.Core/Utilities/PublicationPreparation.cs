@@ -94,24 +94,24 @@ public static class PublicationPreparation
     {
         if (!packageReady)
         {
-            return "Le paquet n'est pas pret a etre publie.";
+            return "Le paquet ne peut pas encore etre publie.";
         }
 
         if (!hasRealWaptFile)
         {
-            return "Le paquet est valide, mais aucun vrai fichier .wapt n'a ete trouve.";
+            return "Le paquet est relu, mais aucun vrai fichier .wapt n'a encore ete trouve.";
         }
 
         return directUploadAvailable
-            ? "Le paquet est pret a etre publie."
-            : "Le paquet est pret a etre publie via WAPT Console.";
+            ? "Le paquet peut etre publie."
+            : "Le paquet peut etre publie via WAPT Console.";
     }
 
     private static string BuildRecommendationMessage(bool packageReady, bool hasRealWaptFile, PublicationMode recommendedMode, bool directUploadAvailable)
     {
         if (!packageReady)
         {
-            return "Corrigez d'abord les blocages de readiness, puis relancez la verification avant toute publication.";
+            return "Corrigez d'abord les blocages techniques, puis relancez la verification avant toute publication.";
         }
 
         if (!hasRealWaptFile)

@@ -204,9 +204,9 @@ public sealed class PackageValidationService : IPackageValidationService
                 : ReadinessVerdict.ReadyForBuildUpload;
         result.Summary = result.Verdict switch
         {
-            ReadinessVerdict.ReadyForBuildUpload => "Le paquet est coherent pour une construction. Les actions poste et l'upload direct doivent encore etre interpretes selon leur configuration et les essais reels deja effectues.",
-            ReadinessVerdict.ReadyWithWarnings => "Le paquet peut encore avancer, mais il reste des points d'attention. Les actions disponibles ne doivent pas etre lues comme deja testees ou validees.",
-            _ => "Le paquet est bloque tant que les erreurs metier et techniques ne sont pas corrigees."
+            ReadinessVerdict.ReadyForBuildUpload => "Le dossier source, les metadonnees et l'installeur sont suffisants pour construire le paquet.",
+            ReadinessVerdict.ReadyWithWarnings => "Le paquet reste exploitable, mais certains points techniques doivent etre relus avant publication.",
+            _ => "Le paquet contient encore des blocages techniques a corriger avant construction ou publication."
         };
 
         return result;

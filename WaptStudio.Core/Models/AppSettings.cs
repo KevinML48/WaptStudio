@@ -2,7 +2,7 @@ namespace WaptStudio.Core.Models;
 
 public sealed class AppSettings
 {
-    public string? CatalogRootFolder { get; set; }
+    public string? CatalogRootFolder { get; set; } = @"C:\waptdev";
 
     public bool CatalogScanRecursively { get; set; } = true;
 

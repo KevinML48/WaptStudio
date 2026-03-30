@@ -24,8 +24,9 @@ public sealed class ManualBuildWorkflowForm : Form
         GeneratedPackagePath = string.Empty;
 
         Text = $"Workflow {workflowName} manuel WAPT";
-        Width = 980;
-        Height = 520;
+        Width = 1120;
+        Height = 760;
+        MinimumSize = new Size(980, 680);
         StartPosition = FormStartPosition.CenterParent;
         MinimizeBox = false;
         MaximizeBox = false;
@@ -107,6 +108,7 @@ public sealed class ManualBuildWorkflowForm : Form
             button.FlatAppearance.BorderColor = BorderColor;
             button.FlatAppearance.BorderSize = button == confirmButton ? 0 : 1;
             button.Padding = new Padding(14, 8, 14, 8);
+            button.MinimumSize = new Size(button == confirmButton ? 260 : 190, 44);
             button.BackColor = button == confirmButton ? AccentColor : PanelColor;
             button.ForeColor = button == confirmButton ? Color.White : HeadingColor;
             button.Font = new Font("Segoe UI", 9.5F, button == confirmButton ? FontStyle.Bold : FontStyle.Regular);

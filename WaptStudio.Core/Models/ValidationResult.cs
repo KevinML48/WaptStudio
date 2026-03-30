@@ -23,9 +23,9 @@ public sealed class ValidationResult
 
     public string VerdictLabel => Verdict switch
     {
-        ReadinessVerdict.ReadyForBuildUpload => "PRET POUR CONSTRUIRE",
-        ReadinessVerdict.ReadyWithWarnings => "CONSTRUCTIBLE AVEC VIGILANCE",
-        _ => "BLOQUE"
+        ReadinessVerdict.ReadyForBuildUpload => "Analyse exploitable",
+        ReadinessVerdict.ReadyWithWarnings => "Analyse exploitable avec points a surveiller",
+        _ => "Blocages a corriger"
     };
 
     public bool HasErrors => Issues.Any(issue => string.Equals(issue.Severity, "ERROR", System.StringComparison.OrdinalIgnoreCase));

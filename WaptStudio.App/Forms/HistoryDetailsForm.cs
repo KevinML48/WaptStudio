@@ -10,8 +10,9 @@ public sealed class HistoryDetailsForm : Form
     public HistoryDetailsForm(HistoryEntry entry)
     {
         Text = $"Historique #{entry.Id}";
-        Width = 900;
-        Height = 700;
+        Width = 1080;
+        Height = 820;
+        MinimumSize = new Size(960, 720);
         StartPosition = FormStartPosition.CenterParent;
         BackColor = Color.FromArgb(243, 245, 249);
         Font = new Font("Segoe UI", 9.5F, FontStyle.Regular);
@@ -76,7 +77,7 @@ public sealed class HistoryDetailsForm : Form
         builder.AppendLine($"Date: {entry.Timestamp:yyyy-MM-dd HH:mm:ss}");
         builder.AppendLine($"Paquet: {entry.PackageName ?? "N/A"}");
         builder.AppendLine($"Etat: {(entry.Success ? "Reussite" : "Echec ou action inachevee")}");
-        builder.AppendLine($"Verdict preparation: {entry.ReadinessVerdict ?? "N/A"}");
+        builder.AppendLine($"Synthese preparation: {entry.ReadinessVerdict ?? "N/A"}");
         builder.AppendLine($"Version: {entry.VersionBefore ?? "N/A"} -> {entry.VersionAfter ?? "N/A"}");
         builder.AppendLine($".wapt associe: {entry.WaptArtifactPath ?? "N/A"}");
         builder.AppendLine($"Resume: {entry.Message}");
@@ -97,7 +98,7 @@ public sealed class HistoryDetailsForm : Form
         builder.AppendLine($"Utilisateur Windows: {entry.WindowsUser}");
         builder.AppendLine($"Version avant: {entry.VersionBefore ?? "N/A"}");
         builder.AppendLine($"Version apres: {entry.VersionAfter ?? "N/A"}");
-        builder.AppendLine($"Verdict readiness: {entry.ReadinessVerdict ?? "N/A"}");
+        builder.AppendLine($"Synthese technique: {entry.ReadinessVerdict ?? "N/A"}");
         builder.AppendLine($"Chemin .wapt: {entry.WaptArtifactPath ?? "N/A"}");
         builder.AppendLine($"Duree (ms): {entry.DurationMilliseconds}");
         builder.AppendLine($"Exit code: {entry.ExitCode}");

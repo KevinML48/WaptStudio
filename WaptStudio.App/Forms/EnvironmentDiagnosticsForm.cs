@@ -8,8 +8,9 @@ public sealed class EnvironmentDiagnosticsForm : Form
     public EnvironmentDiagnosticsForm(string diagnosticsText)
     {
         Text = "Diagnostic environnement";
-        Width = 900;
-        Height = 650;
+        Width = 1080;
+        Height = 780;
+        MinimumSize = new Size(960, 680);
         StartPosition = FormStartPosition.CenterParent;
         BackColor = Color.FromArgb(243, 245, 249);
         Font = new Font("Segoe UI", 9.5F, FontStyle.Regular);
