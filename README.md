@@ -84,21 +84,57 @@ La categorisation metier suit les regles suivantes:
 Le remplacement MSI/EXE suit un flux robuste:
 
 1. selection du nouveau MSI ou EXE
-2. detection du type cible
-3. identification de l'ancien installateur principal
-4. generation d'un plan de synchronisation
-5. affichage d'une previsualisation avant application
-6. sauvegarde automatique du paquet
-7. application du remplacement
-8. suppression de l'ancien installateur principal si le nouveau est applique
+2. affichage d'une etape explicite de gestion de version WAPT
+3. detection du type cible
+4. identification de l'ancien installateur principal
+5. generation d'un plan de synchronisation
+6. affichage d'une previsualisation avant application
+7. sauvegarde automatique du paquet
+8. application du remplacement
+9. suppression de l'ancien installateur principal si le nouveau est applique
 
 Garanties apportees:
 
 - aucune suppression sans sauvegarde prealable
 - pas de remplacement partiel silencieux
 - le package id reste conserve
-- la version cible est deduite du nouveau fichier si possible
-- sinon la version existante est explicitement conservee
+- aucun changement silencieux de version WAPT
+- la version detectee dans le nom du nouvel installateur reste une suggestion
+- la version cible est choisie explicitement avant la previsualisation
+
+## Gestion explicite de version WAPT
+
+Avant de lancer la previsualisation, WaptStudio affiche maintenant une etape dediee a la version du paquet. Cette etape presente:
+
+- la version actuelle du paquet
+- la version suggeree si elle peut etre deduite de facon fiable depuis le nom du nouvel installateur
+- le nouvel installateur selectionne
+- trois strategies simples
+
+Strategies disponibles:
+
+1. conserver la version actuelle
+2. incrementer uniquement la revision du paquet
+3. definir explicitement une nouvelle version
+
+Regles appliquees:
+
+- conserver: la version WAPT reste strictement identique
+- incrementer la revision: seule la revision du paquet evolue, par exemple `11.0.0-1` devient `11.0.0-2`
+- definir une nouvelle version: la version saisie est validee strictement avant application
+- si une version explicite est saisie sans revision alors que le paquet courant utilise deja une revision, WaptStudio normalise de facon coherente en demarrant a `-1`
+- le champ `control/package` n'est jamais modifie automatiquement
+
+La version produit et la revision du paquet ont des roles differents:
+
+- la version produit represente la version logicielle transportee par l'installateur
+- la revision du paquet represente l'iteration du paquet WAPT autour de cette version produit
+
+Exemples:
+
+- conserver `9.1.1-1` permet de remplacer un binaire sans changer la version WAPT
+- incrementer la revision transforme `9.1.1-1` en `9.1.1-2`
+- remplacer explicitement la version permet un cas comme `9.1.1-1 -> 11.0.0-1`
 
 ## Synchronisation complete du paquet
 
@@ -200,6 +236,50 @@ Messages utilisateur utilises:
 
 Le produit n'affiche pas de faux succes.
 
+## Portabilite poste par poste
+
+WaptStudio est prepare pour etre distribue a plusieurs utilisateurs Windows sans dependre du profil du poste de developpement.
+
+Principes appliques:
+
+- aucune donnee de travail n'est stockee dans le depot source
+- la configuration utilisateur est locale a la session Windows
+- les logs, l'historique, le cache et les sauvegardes sont separes
+- les secrets ne sont pas ecrits en clair dans `appsettings.json`
+- l'executable WAPT est detecte automatiquement quand c'est possible
+
+Emplacements locaux par defaut:
+
+- `%LOCALAPPDATA%\\WaptStudio\\config`
+- `%LOCALAPPDATA%\\WaptStudio\\data`
+- `%LOCALAPPDATA%\\WaptStudio\\cache`
+- `%LOCALAPPDATA%\\WaptStudio\\logs`
+- `%LOCALAPPDATA%\\WaptStudio\\backups`
+
+Option d'override locale:
+
+- definir la variable d'environnement `WAPTSTUDIO_HOME` pour deplacer tout le stockage local WaptStudio vers un autre dossier
+
+Ce que WaptStudio detecte automatiquement:
+
+- `wapt-get.exe` si l'executable est deja resolvable via le `PATH`
+- `wapt-get.exe` via `WAPT_HOME` ou `WAPT_ROOT`
+- les emplacements Windows standards comme `Program Files\\wapt`
+
+Ce qui reste a configurer par utilisateur:
+
+- le certificat de signature personnel
+- l'URL du depot d'upload
+- le dossier catalogue a inventorier
+- tout chemin WAPT specifique si l'auto-detection ne suffit pas
+
+Au premier lancement sur un nouveau poste, WaptStudio affiche un diagnostic d'environnement. Ce rapport indique:
+
+- les dossiers locaux utilises
+- le chemin WAPT detecte ou manquant
+- l'etat du certificat de signature
+- les actions manuelles encore necessaires
+
 ## Build, publication finale, Audit et Uninstall via WAPT
 
 Toutes les commandes WAPT passent par [WaptStudio.Core/Services/WaptCommandService.cs](WaptStudio.Core/Services/WaptCommandService.cs).
@@ -222,6 +302,89 @@ Placeholders disponibles dans les templates:
 - `{signingKeyPath}`
 - `{uploadRepositoryUrl}`
 - `{repositoryOption}`
+
+## Publication Windows interne
+
+Le script [Build-Release.ps1](Build-Release.ps1) produit maintenant une version Windows `win-x64` self-contained, directement distribuable sur un autre poste sans SDK .NET.
+
+Commande recommandee:
+
+```powershell
+.\Build-Release.ps1
+```
+
+Resultat attendu:
+
+- compilation `Release`
+- tests de la solution
+- publication `win-x64` self-contained
+- sortie dans `dist\win-x64\self-contained`
+
+Le script [Start-WaptStudio.ps1](Start-WaptStudio.ps1) sait maintenant:
+
+- lancer l'executable publie s'il existe a cote du script dans `win-x64\self-contained`
+- sinon revenir au mode developpement `dotnet run`
+
+Pour une distribution interne simple:
+
+1. lancer `Build-Release.ps1`
+2. copier le dossier `dist`
+3. sur le poste cible, lancer `Start-WaptStudio.ps1` depuis ce dossier ou directement `WaptStudio.App.exe`
+4. verifier le diagnostic du premier lancement puis completer les parametres locaux si necessaire
+
+## Paquet WAPT de WaptStudio
+
+WaptStudio peut maintenant etre lui-meme deploye sous forme de paquet WAPT, en partant exclusivement du resultat publie et non du code source brut.
+
+Strategie retenue:
+
+- publish `Release` self-contained `win-x64`
+- staging d'un paquet WAPT dans `artifacts\wapt-package\cd48-waptstudio`
+- installation applicative dans `Program Files\WaptStudio`
+- raccourci Menu Demarrer commun
+- raccourci Bureau desactive par defaut mais configurable dans le `setup.py`
+- aucune donnee utilisateur installee dans `Program Files`
+- aucune suppression des donnees utilisateur dans `%LOCALAPPDATA%\WaptStudio` lors d'une mise a jour ou d'une desinstallation
+
+Fichiers de packaging ajoutes:
+
+- [Build-WaptStudio-Package.ps1](Build-WaptStudio-Package.ps1)
+- [Test-WaptStudio-Package.ps1](Test-WaptStudio-Package.ps1)
+- [packaging/wapt/README.md](packaging/wapt/README.md)
+- [packaging/wapt/cd48-waptstudio/setup.py](packaging/wapt/cd48-waptstudio/setup.py)
+- [packaging/wapt/cd48-waptstudio/WAPT/control](packaging/wapt/cd48-waptstudio/WAPT/control)
+
+Commandes recommandees:
+
+```powershell
+.\Build-WaptStudio-Package.ps1
+.\Test-WaptStudio-Package.ps1
+```
+
+Pour construire directement le `.wapt` si `wapt-get.exe` est disponible:
+
+```powershell
+.\Build-WaptStudio-Package.ps1 -BuildWithWapt
+.\Test-WaptStudio-Package.ps1 -BuildWithWapt
+```
+
+Ce que le paquet installe globalement:
+
+- `WaptStudio.App.exe`
+- les DLL et dependances du publish self-contained
+- le raccourci Menu Demarrer commun
+
+Ce qui reste par utilisateur:
+
+- `appsettings.json`
+- historique SQLite
+- logs
+- cache
+- sauvegardes
+- configuration WAPT locale
+- certificat de signature local si l'utilisateur en configure un
+
+Le template du paquet est versionne dans le depot, tandis que le paquet complet genere reste dans `artifacts`, afin de ne pas versionner les binaires publies.
 - `{overwriteFlag}`
 
 Templates par defaut utiles:

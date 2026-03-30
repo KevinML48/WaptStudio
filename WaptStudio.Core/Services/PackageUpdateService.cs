@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
@@ -13,6 +14,14 @@ namespace WaptStudio.Core.Services;
 
 public sealed class PackageUpdateService : IPackageUpdateService
 {
+    private static readonly HashSet<string> SkippedCloneDirectoryNames = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".git",
+        ".vs",
+        "__pycache__",
+        ".waptstudio-backups"
+    };
+
     private readonly IPackageInspectorService _packageInspectorService;
     private readonly ISettingsService _settingsService;
     private readonly IBackupRestoreService _backupRestoreService;
@@ -27,9 +36,10 @@ public sealed class PackageUpdateService : IPackageUpdateService
     public async Task<PackageUpdateResult> ReplaceInstallerAsync(
         PackageInfo packageInfo,
         string newInstallerFilePath,
+        PackageVersionSelection? versionSelection = null,
         CancellationToken cancellationToken = default)
     {
-        var synchronizationPlan = await PreviewReplacementAsync(packageInfo, newInstallerFilePath, cancellationToken).ConfigureAwait(false);
+        var synchronizationPlan = await PreviewReplacementAsync(packageInfo, newInstallerFilePath, versionSelection, cancellationToken).ConfigureAwait(false);
 
         var settings = await _settingsService.LoadAsync(cancellationToken).ConfigureAwait(false);
         var extension = Path.GetExtension(newInstallerFilePath);
@@ -45,24 +55,6 @@ public sealed class PackageUpdateService : IPackageUpdateService
         synchronizationPlan.BackupWillBeCreated = true;
         synchronizationPlan.BackupDirectory = backupDirectory;
 
-        var packageInstallerDirectory = packageInfo.InstallerPath is null
-            ? packageInfo.PackageFolder
-            : Path.GetDirectoryName(packageInfo.InstallerPath) ?? packageInfo.PackageFolder;
-        var destinationInstallerPath = Path.Combine(packageInstallerDirectory, Path.GetFileName(newInstallerFilePath));
-        var previousInstallerName = synchronizationPlan.CurrentInstallerName;
-        var newInstallerName = synchronizationPlan.TargetInstallerName ?? Path.GetFileName(destinationInstallerPath);
-        var previousVersion = synchronizationPlan.CurrentVersion;
-        var newVersion = synchronizationPlan.TargetVersion;
-
-        File.Copy(newInstallerFilePath, destinationInstallerPath, overwrite: true);
-
-        if (packageInfo.InstallerPath is not null
-            && !string.Equals(Path.GetFullPath(packageInfo.InstallerPath), Path.GetFullPath(destinationInstallerPath), StringComparison.OrdinalIgnoreCase)
-            && File.Exists(packageInfo.InstallerPath))
-        {
-            File.Delete(packageInfo.InstallerPath);
-        }
-
         var result = new PackageUpdateResult
         {
             Success = true,
@@ -72,43 +64,66 @@ public sealed class PackageUpdateService : IPackageUpdateService
             UpdatedPackageFolder = packageInfo.PackageFolder,
             SynchronizationPlan = synchronizationPlan
         };
+
+        var workingPackageFolder = PrepareWorkingPackageFolder(packageInfo, synchronizationPlan, result);
+        result.UpdatedPackageFolder = workingPackageFolder;
+
+        var packageInstallerDirectory = ResolveWorkingInstallerDirectory(packageInfo, workingPackageFolder);
+        var destinationInstallerPath = Path.Combine(packageInstallerDirectory, Path.GetFileName(newInstallerFilePath));
+        var previousInstallerName = synchronizationPlan.CurrentInstallerName;
+        var newInstallerName = synchronizationPlan.TargetInstallerName ?? Path.GetFileName(destinationInstallerPath);
+        var previousVersion = synchronizationPlan.CurrentVersion;
+        var newVersion = synchronizationPlan.TargetVersion;
+
+        File.Copy(newInstallerFilePath, destinationInstallerPath, overwrite: true);
+
+        var workingInstallerPath = MapPathToWorkingPackageFolder(packageInfo.InstallerPath, packageInfo.PackageFolder, workingPackageFolder);
+        if (workingInstallerPath is not null
+            && !string.Equals(Path.GetFullPath(workingInstallerPath), Path.GetFullPath(destinationInstallerPath), StringComparison.OrdinalIgnoreCase)
+            && File.Exists(workingInstallerPath))
+        {
+            File.Delete(workingInstallerPath);
+        }
+
         result.UpdatedFiles.Add(destinationInstallerPath);
         result.ChangeSummaryLines.AddRange(synchronizationPlan.SummaryLines);
 
-        if (packageInfo.SetupPyPath is not null && File.Exists(packageInfo.SetupPyPath))
+        var workingSetupPyPath = MapPathToWorkingPackageFolder(packageInfo.SetupPyPath, packageInfo.PackageFolder, workingPackageFolder);
+        if (workingSetupPyPath is not null && File.Exists(workingSetupPyPath))
         {
-            var setupContent = await File.ReadAllTextAsync(packageInfo.SetupPyPath, cancellationToken).ConfigureAwait(false);
+            var setupContent = await File.ReadAllTextAsync(workingSetupPyPath, cancellationToken).ConfigureAwait(false);
             var updatedContent = UpdateSetupPyInstallerReference(setupContent, previousInstallerName, newInstallerName);
             updatedContent = TryUpdateSetupPyVersion(updatedContent, synchronizationPlan.TargetVersion);
             updatedContent = TryUpdateSetupPyInformationalLines(updatedContent, previousVersion, newVersion, previousInstallerName, newInstallerName);
 
             if (!string.Equals(setupContent, updatedContent, StringComparison.Ordinal))
             {
-                await File.WriteAllTextAsync(packageInfo.SetupPyPath, updatedContent, cancellationToken).ConfigureAwait(false);
-                result.UpdatedFiles.Add(packageInfo.SetupPyPath);
+                await File.WriteAllTextAsync(workingSetupPyPath, updatedContent, cancellationToken).ConfigureAwait(false);
+                result.UpdatedFiles.Add(workingSetupPyPath);
             }
 
-            var validatedContent = await File.ReadAllTextAsync(packageInfo.SetupPyPath, cancellationToken).ConfigureAwait(false);
+            var validatedContent = await File.ReadAllTextAsync(workingSetupPyPath, cancellationToken).ConfigureAwait(false);
             EnsureSetupPyInstallerReferenceIsCoherent(validatedContent, newInstallerName);
         }
 
-        if (packageInfo.ControlFilePath is not null && File.Exists(packageInfo.ControlFilePath))
+        var workingControlFilePath = MapPathToWorkingPackageFolder(packageInfo.ControlFilePath, packageInfo.PackageFolder, workingPackageFolder);
+        if (workingControlFilePath is not null && File.Exists(workingControlFilePath))
         {
-            var controlContent = await File.ReadAllTextAsync(packageInfo.ControlFilePath, cancellationToken).ConfigureAwait(false);
+            var controlContent = await File.ReadAllTextAsync(workingControlFilePath, cancellationToken).ConfigureAwait(false);
             var updatedContent = SynchronizeControlMetadata(controlContent, synchronizationPlan);
             EnsureControlPackageIsUnchanged(controlContent, updatedContent);
 
             if (!string.Equals(controlContent, updatedContent, StringComparison.Ordinal))
             {
-                await File.WriteAllTextAsync(packageInfo.ControlFilePath, updatedContent, cancellationToken).ConfigureAwait(false);
-                result.UpdatedFiles.Add(packageInfo.ControlFilePath);
+                await File.WriteAllTextAsync(workingControlFilePath, updatedContent, cancellationToken).ConfigureAwait(false);
+                result.UpdatedFiles.Add(workingControlFilePath);
             }
         }
 
-        var finalPackageFolder = ApplyPackageFolderRename(synchronizationPlan, result);
-        if (!string.Equals(finalPackageFolder, packageInfo.PackageFolder, StringComparison.OrdinalIgnoreCase))
+        var finalPackageFolder = ApplyPackageFolderRename(synchronizationPlan, result, workingPackageFolder);
+        if (!string.Equals(finalPackageFolder, workingPackageFolder, StringComparison.OrdinalIgnoreCase))
         {
-            RemapUpdatedFilePaths(result.UpdatedFiles, packageInfo.PackageFolder, finalPackageFolder);
+            RemapUpdatedFilePaths(result.UpdatedFiles, workingPackageFolder, finalPackageFolder);
         }
 
         result.UpdatedPackageInfo = await _packageInspectorService.AnalyzePackageAsync(finalPackageFolder, cancellationToken).ConfigureAwait(false);
@@ -119,6 +134,7 @@ public sealed class PackageUpdateService : IPackageUpdateService
     public Task<PackageSynchronizationPlan> PreviewReplacementAsync(
         PackageInfo packageInfo,
         string newInstallerFilePath,
+        PackageVersionSelection? versionSelection = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(packageInfo);
@@ -133,46 +149,26 @@ public sealed class PackageUpdateService : IPackageUpdateService
             throw new DirectoryNotFoundException("Le dossier du paquet est invalide.");
         }
 
-        var plan = BuildSynchronizationPlan(packageInfo, newInstallerFilePath);
+        var plan = BuildSynchronizationPlan(packageInfo, newInstallerFilePath, versionSelection);
         return Task.FromResult(plan);
     }
 
     private static string UpdateSetupPyInstallerReference(string content, string? previousInstallerName, string newInstallerName)
-    {
-        var newExtension = Path.GetExtension(newInstallerName).TrimStart('.').ToLowerInvariant();
-        var targetFunctionName = newExtension == "exe" ? "install_exe_if_needed" : "install_msi_if_needed";
-
-        return Regex.Replace(
-            content,
-            @"(?im)install_(?:msi|exe)_if_needed\(\s*(?<quote>['""])[^'""]*\k<quote>\s*\)",
-            match =>
-            {
-                var quote = match.Groups["quote"].Value;
-                return $"{targetFunctionName}({quote}{newInstallerName}{quote})";
-            });
-    }
+        => SetupPyInstallerReferenceParser.UpdateInstallerReference(content, previousInstallerName, newInstallerName);
 
     private static void EnsureSetupPyInstallerReferenceIsCoherent(string content, string newInstallerName)
     {
         var newExtension = Path.GetExtension(newInstallerName).TrimStart('.').ToLowerInvariant();
         var expectedFunction = newExtension == "exe" ? "install_exe_if_needed" : "install_msi_if_needed";
-        var matches = Regex.Matches(content, "(?im)install_(?<fn>msi|exe)_if_needed\\(\\s*(?:'|\")(?<value>[^'\\\"\\r\\n]+)(?:'|\")\\s*\\)");
-        if (matches.Count == 0)
+        var references = SetupPyInstallerReferenceParser.ParseInstallReferences(content);
+        if (references.Count == 0)
         {
             throw new InvalidOperationException($"setup.py ne reference plus d'appel {expectedFunction} apres remplacement.");
         }
 
-        foreach (Match match in matches)
+        if (!SetupPyInstallerReferenceParser.HasCoherentInstallerReference(content, newInstallerName))
         {
-            var functionName = match.Groups["fn"].Value;
-            var value = match.Groups["value"].Value;
-            var expectedSuffix = expectedFunction.EndsWith("exe_if_needed", StringComparison.OrdinalIgnoreCase) ? "exe" : "msi";
-
-            if (!string.Equals(functionName, expectedSuffix, StringComparison.OrdinalIgnoreCase)
-                || !string.Equals(value, newInstallerName, StringComparison.OrdinalIgnoreCase))
-            {
-                throw new InvalidOperationException("setup.py ne reference pas exactement le nouvel installeur apres remplacement.");
-            }
+            throw new InvalidOperationException("setup.py ne reference pas exactement le nouvel installeur apres remplacement.");
         }
     }
 
@@ -301,11 +297,16 @@ public sealed class PackageUpdateService : IPackageUpdateService
             || trimmed.StartsWith("log(", StringComparison.Ordinal);
     }
 
-    private static string ApplyPackageFolderRename(PackageSynchronizationPlan plan, PackageUpdateResult result)
+    private static string ApplyPackageFolderRename(PackageSynchronizationPlan plan, PackageUpdateResult result, string workingPackageFolder)
     {
+        if (plan.PackageFolderClonePlanned)
+        {
+            return workingPackageFolder;
+        }
+
         if (!plan.PackageFolderRenamePlanned)
         {
-            return plan.CurrentPackageFolder;
+            return workingPackageFolder;
         }
 
         result.SuggestedPackageFolder = plan.TargetPackageFolder;
@@ -315,7 +316,7 @@ public sealed class PackageUpdateService : IPackageUpdateService
             return plan.CurrentPackageFolder;
         }
 
-        Directory.Move(plan.CurrentPackageFolder, plan.TargetPackageFolder);
+        Directory.Move(workingPackageFolder, plan.TargetPackageFolder);
         result.PackageFolderRenamed = true;
         return plan.TargetPackageFolder;
     }
@@ -344,24 +345,45 @@ public sealed class PackageUpdateService : IPackageUpdateService
         changeSummaryLines.Add($"{label}: {previousValue ?? "N/A"} -> {updatedValue ?? "N/A"}");
     }
 
-    private static PackageSynchronizationPlan BuildSynchronizationPlan(PackageInfo packageInfo, string newInstallerFilePath)
+    private static PackageSynchronizationPlan BuildSynchronizationPlan(PackageInfo packageInfo, string newInstallerFilePath, PackageVersionSelection? versionSelection)
     {
-        var inferredInstallerVersion = InferVersionFromFileName(newInstallerFilePath);
-        var targetVersion = string.IsNullOrWhiteSpace(packageInfo.Version)
-            ? inferredInstallerVersion
-            : packageInfo.Version;
+        var inferredInstallerVersion = PackageVersioning.InferVersionFromInstallerFileName(newInstallerFilePath);
+        var targetVersion = ResolveTargetVersion(packageInfo, inferredInstallerVersion, versionSelection);
         var currentInstallerName = packageInfo.InstallerPath is null ? packageInfo.ReferencedInstallerName : Path.GetFileName(packageInfo.InstallerPath);
         var targetInstallerName = Path.GetFileName(newInstallerFilePath);
         var packageId = packageInfo.PackageName ?? string.Empty;
         var targetVisibleName = BuildTargetVisibleName(packageInfo, targetVersion, currentInstallerName, targetInstallerName);
         var targetDescription = BuildTargetDescription(packageInfo.Description, packageInfo.VisibleName, targetVisibleName, packageInfo.Version, targetVersion, currentInstallerName, targetInstallerName);
         var targetDescriptionFr = BuildTargetDescription(packageInfo.DescriptionFr, packageInfo.VisibleName, targetVisibleName, packageInfo.Version, targetVersion, currentInstallerName, targetInstallerName);
-        var targetPackageFolder = BuildTargetPackageFolder(packageInfo.PackageFolder, packageId, packageInfo.Version, targetVersion, out var renamePlanned, out var renamePossible);
+        var suggestedVersionedPackageFolder = BuildTargetPackageFolder(packageInfo.PackageFolder, packageId, packageInfo.Version, targetVersion, out var renameCandidatePlanned, out var renameCandidatePossible);
+        var folderUpdateMode = ResolveFolderUpdateMode(packageInfo.PackageFolder, suggestedVersionedPackageFolder, packageInfo.Version, targetVersion, versionSelection?.FolderUpdateMode);
+        var versionChanges = !string.IsNullOrWhiteSpace(packageInfo.Version)
+            && !string.IsNullOrWhiteSpace(targetVersion)
+            && !string.Equals(packageInfo.Version, targetVersion, StringComparison.OrdinalIgnoreCase);
+        var clonePlanned = folderUpdateMode == PackageFolderUpdateMode.CreateVersionedFolderClone
+            && !string.Equals(packageInfo.PackageFolder, suggestedVersionedPackageFolder, StringComparison.OrdinalIgnoreCase)
+            && versionChanges;
+        var clonePossible = !clonePlanned || !Directory.Exists(suggestedVersionedPackageFolder);
+        var renamePlanned = renameCandidatePlanned
+            && (!versionChanges || folderUpdateMode != PackageFolderUpdateMode.UpdateCurrentFolder)
+            && !clonePlanned;
+        var renamePossible = !renamePlanned || renameCandidatePossible;
+        var targetPackageFolder = clonePlanned || renamePlanned
+            ? suggestedVersionedPackageFolder
+            : packageInfo.PackageFolder;
 
         var expectedVersion = targetVersion ?? packageInfo.Version;
         var plan = new PackageSynchronizationPlan
         {
             PackageId = packageId,
+            VersionStrategy = versionSelection?.Strategy ?? PackageVersionStrategy.KeepCurrentVersion,
+            VersionStrategyLabel = PackageVersioning.DescribeStrategy(versionSelection?.Strategy ?? PackageVersionStrategy.KeepCurrentVersion),
+            FolderUpdateMode = folderUpdateMode,
+            FolderUpdateModeLabel = DescribeFolderUpdateMode(folderUpdateMode),
+            SuggestedVersion = inferredInstallerVersion,
+            SuggestedVersionedPackageFolder = string.Equals(packageInfo.PackageFolder, suggestedVersionedPackageFolder, StringComparison.OrdinalIgnoreCase)
+                ? null
+                : suggestedVersionedPackageFolder,
             CurrentVersion = packageInfo.Version,
             TargetVersion = targetVersion,
             CurrentInstallerName = currentInstallerName,
@@ -378,6 +400,8 @@ public sealed class PackageUpdateService : IPackageUpdateService
             TargetPackageFolder = targetPackageFolder,
             PackageFolderRenamePlanned = renamePlanned,
             PackageFolderRenamePossible = renamePossible,
+            PackageFolderClonePlanned = clonePlanned,
+            PackageFolderClonePossible = clonePossible,
             ExpectedWaptFileName = WaptNaming.BuildExpectedWaptFileName(
                 targetPackageFolder,
                 packageId,
@@ -390,6 +414,8 @@ public sealed class PackageUpdateService : IPackageUpdateService
         };
 
         AddChangeSummary(plan.SummaryLines, "Package", packageId, packageId);
+        AddChangeSummary(plan.SummaryLines, "Strategie de version", null, plan.VersionStrategyLabel);
+        AddChangeSummary(plan.SummaryLines, "Mode dossier", null, plan.FolderUpdateModeLabel);
         AddChangeSummary(plan.SummaryLines, "Version", plan.CurrentVersion, plan.TargetVersion);
         AddChangeSummary(plan.SummaryLines, "Type", plan.CurrentInstallerType, plan.TargetInstallerType);
         AddChangeSummary(plan.SummaryLines, "MSI/EXE", plan.CurrentInstallerName, plan.TargetInstallerName);
@@ -415,7 +441,15 @@ public sealed class PackageUpdateService : IPackageUpdateService
             && !string.IsNullOrWhiteSpace(inferredInstallerVersion)
             && !string.Equals(packageInfo.Version, inferredInstallerVersion, StringComparison.OrdinalIgnoreCase))
         {
-            plan.Warnings.Add($"Version du package preservee ({packageInfo.Version}) malgre un nom d'installeur suggerant {inferredInstallerVersion}.");
+            if (versionSelection is null || versionSelection.Strategy != PackageVersionStrategy.SetExplicitVersion)
+            {
+                plan.Warnings.Add($"Le nouvel installeur suggere {inferredInstallerVersion}, mais la version WAPT cible reste {targetVersion ?? packageInfo.Version}. Aucun changement silencieux n'est applique.");
+            }
+        }
+
+        if (versionSelection?.Strategy == PackageVersionStrategy.SetExplicitVersion && !string.IsNullOrWhiteSpace(versionSelection.ExplicitVersion))
+        {
+            plan.Warnings.Add($"Version cible definie explicitement par l'utilisateur: {plan.TargetVersion}.");
         }
 
         if (string.IsNullOrWhiteSpace(packageInfo.VisibleName))
@@ -428,12 +462,84 @@ public sealed class PackageUpdateService : IPackageUpdateService
             plan.Warnings.Add("Description absente dans control: aucune description nouvelle n'a ete inventee.");
         }
 
-        if (renamePlanned && !renamePossible)
+        if (clonePlanned && !clonePossible)
+        {
+            plan.Warnings.Add("Creation du nouveau dossier impossible car le dossier cible existe deja.");
+        }
+
+        if (renamePlanned && !renamePossible && !clonePlanned)
         {
             plan.Warnings.Add("Renommage du dossier cible impossible car un dossier du meme nom existe deja.");
         }
 
+        if (clonePlanned)
+        {
+            plan.Warnings.Add("Le nouveau dossier sera cree a partir d'une copie complete du paquet existant, puis seules les metadonnees cibles seront mises a jour.");
+        }
+
         return plan;
+    }
+
+    private static PackageFolderUpdateMode ResolveFolderUpdateMode(string currentPackageFolder, string suggestedVersionedPackageFolder, string? currentVersion, string? targetVersion, PackageFolderUpdateMode? requestedMode)
+    {
+        if (requestedMode.HasValue)
+        {
+            return requestedMode.Value;
+        }
+
+        var versionChanges = !string.IsNullOrWhiteSpace(currentVersion)
+            && !string.IsNullOrWhiteSpace(targetVersion)
+            && !string.Equals(currentVersion, targetVersion, StringComparison.OrdinalIgnoreCase);
+        var suggestedFolderDiffers = !string.Equals(currentPackageFolder, suggestedVersionedPackageFolder, StringComparison.OrdinalIgnoreCase);
+
+        return versionChanges && suggestedFolderDiffers
+            ? PackageFolderUpdateMode.CreateVersionedFolderClone
+            : PackageFolderUpdateMode.UpdateCurrentFolder;
+    }
+
+    private static string DescribeFolderUpdateMode(PackageFolderUpdateMode mode)
+        => mode switch
+        {
+            PackageFolderUpdateMode.CreateVersionedFolderClone => "Creer un nouveau dossier versionne en conservant le contenu existant",
+            _ => "Mettre a jour dans le dossier actuel"
+        };
+
+    private static string? ResolveTargetVersion(PackageInfo packageInfo, string? inferredInstallerVersion, PackageVersionSelection? versionSelection)
+    {
+        if (versionSelection is null)
+        {
+            return string.IsNullOrWhiteSpace(packageInfo.Version)
+                ? inferredInstallerVersion
+                : packageInfo.Version;
+        }
+
+        return versionSelection.Strategy switch
+        {
+            PackageVersionStrategy.KeepCurrentVersion => packageInfo.Version ?? throw new InvalidOperationException("Aucune version actuelle n'est disponible a conserver pour ce paquet."),
+            PackageVersionStrategy.IncrementPackageRevision => ResolveIncrementedRevision(packageInfo.Version),
+            PackageVersionStrategy.SetExplicitVersion => ResolveExplicitVersion(versionSelection.ExplicitVersion, packageInfo.Version),
+            _ => packageInfo.Version
+        };
+    }
+
+    private static string ResolveIncrementedRevision(string? currentVersion)
+    {
+        if (PackageVersioning.TryIncrementPackageRevision(currentVersion, out var normalizedVersion, out var errorMessage))
+        {
+            return normalizedVersion;
+        }
+
+        throw new InvalidOperationException(errorMessage);
+    }
+
+    private static string ResolveExplicitVersion(string? explicitVersion, string? currentVersion)
+    {
+        if (PackageVersioning.TryNormalizeExplicitVersion(explicitVersion, currentVersion, out var normalizedVersion, out var errorMessage))
+        {
+            return normalizedVersion;
+        }
+
+        throw new InvalidOperationException(errorMessage);
     }
 
     private static string BuildTargetVisibleName(PackageInfo packageInfo, string? targetVersion, string? currentInstallerName, string targetInstallerName)
@@ -524,16 +630,101 @@ public sealed class PackageUpdateService : IPackageUpdateService
         return string.IsNullOrWhiteSpace(normalized) ? fallbackPrefix : normalized;
     }
 
-    private static string? InferVersionFromFileName(string installerPath)
+    private static string PrepareWorkingPackageFolder(PackageInfo packageInfo, PackageSynchronizationPlan plan, PackageUpdateResult result)
     {
-        var fileName = Path.GetFileNameWithoutExtension(installerPath);
-        var match = Regex.Match(fileName, @"(?<!\d)(\d+(?:[._-]\d+)+)");
-        if (match.Success)
+        if (plan.PackageFolderClonePlanned)
         {
-            return match.Groups[1].Value.Replace('_', '.').Replace('-', '.');
+            result.SuggestedPackageFolder = plan.TargetPackageFolder;
+            if (!plan.PackageFolderClonePossible)
+            {
+                throw new InvalidOperationException("Le dossier versionne cible existe deja. Impossible de cloner proprement le paquet sans ecraser un dossier existant.");
+            }
+
+            ClonePackageFolder(packageInfo.PackageFolder, plan.TargetPackageFolder);
+            result.PackageFolderCloned = true;
+            return plan.TargetPackageFolder;
         }
 
-        var compactMatch = Regex.Match(fileName, @"(?<!\d)(\d{4,})(?!\d)");
-        return compactMatch.Success ? compactMatch.Groups[1].Value : null;
+        return packageInfo.PackageFolder;
     }
+
+    private static string ResolveWorkingInstallerDirectory(PackageInfo packageInfo, string workingPackageFolder)
+    {
+        if (packageInfo.InstallerPath is null)
+        {
+            return workingPackageFolder;
+        }
+
+        var sourceDirectory = Path.GetDirectoryName(packageInfo.InstallerPath) ?? packageInfo.PackageFolder;
+        var relativeDirectory = Path.GetRelativePath(packageInfo.PackageFolder, sourceDirectory);
+        return string.Equals(relativeDirectory, ".", StringComparison.Ordinal)
+            ? workingPackageFolder
+            : Path.Combine(workingPackageFolder, relativeDirectory);
+    }
+
+    private static string? MapPathToWorkingPackageFolder(string? originalPath, string sourcePackageFolder, string workingPackageFolder)
+    {
+        if (string.IsNullOrWhiteSpace(originalPath))
+        {
+            return null;
+        }
+
+        var relativePath = Path.GetRelativePath(sourcePackageFolder, originalPath);
+        return string.Equals(relativePath, ".", StringComparison.Ordinal)
+            ? workingPackageFolder
+            : Path.Combine(workingPackageFolder, relativePath);
+    }
+
+    private static void ClonePackageFolder(string sourcePackageFolder, string targetPackageFolder)
+    {
+        Directory.CreateDirectory(targetPackageFolder);
+
+        foreach (var sourceDirectory in Directory.EnumerateDirectories(sourcePackageFolder, "*", SearchOption.AllDirectories))
+        {
+            var relativeDirectory = Path.GetRelativePath(sourcePackageFolder, sourceDirectory);
+            if (ShouldSkipCloneDirectory(relativeDirectory))
+            {
+                continue;
+            }
+
+            Directory.CreateDirectory(Path.Combine(targetPackageFolder, relativeDirectory));
+        }
+
+        foreach (var sourceFile in Directory.EnumerateFiles(sourcePackageFolder, "*", SearchOption.AllDirectories))
+        {
+            var relativePath = Path.GetRelativePath(sourcePackageFolder, sourceFile);
+            if (ShouldSkipCloneFile(relativePath))
+            {
+                continue;
+            }
+
+            var targetFile = Path.Combine(targetPackageFolder, relativePath);
+            Directory.CreateDirectory(Path.GetDirectoryName(targetFile)!);
+            File.Copy(sourceFile, targetFile, overwrite: true);
+        }
+    }
+
+    private static bool ShouldSkipCloneDirectory(string relativeDirectory)
+    {
+        var segments = relativeDirectory.Split(new[] { Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar }, StringSplitOptions.RemoveEmptyEntries);
+        return segments.Any(segment => SkippedCloneDirectoryNames.Contains(segment));
+    }
+
+    private static bool ShouldSkipCloneFile(string relativePath)
+    {
+        var directory = Path.GetDirectoryName(relativePath);
+        if (!string.IsNullOrWhiteSpace(directory) && ShouldSkipCloneDirectory(directory))
+        {
+            return true;
+        }
+
+        var fileName = Path.GetFileName(relativePath);
+        if (fileName.EndsWith(".wapt", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        return string.Equals(fileName, "Thumbs.db", StringComparison.OrdinalIgnoreCase);
+    }
+
 }

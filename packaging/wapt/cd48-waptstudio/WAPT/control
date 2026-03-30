@@ -1,0 +1,14 @@
+package      : __PACKAGE_ID__
+version      : __PACKAGE_VERSION__
+architecture : x64
+section      : base
+priority     : optional
+name         : WaptStudio
+categories   : Utilities
+maturity     : PROD
+target_os    : windows
+maintainer   : CD48
+description  : WaptStudio WinForms pour preparer, verifier et publier des paquets WAPT sans embarquer les donnees utilisateur.
+description_fr: Installe WaptStudio depuis le publish self-contained __PUBLISH_RUNTIME__ et conserve les donnees utilisateur dans %%LOCALAPPDATA%%\WaptStudio.
+depends      :
+conflicts    :

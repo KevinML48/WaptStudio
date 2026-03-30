@@ -2,6 +2,7 @@ using System;
 using System.Drawing;
 using System.IO;
 using System.Windows.Forms;
+using WaptStudio.Core.Configuration;
 using WaptStudio.Core.Models;
 
 namespace WaptStudio.App.Forms;
@@ -27,6 +28,7 @@ public sealed class SettingsForm : Form
     private readonly TextBox _auditArgsTextBox = new() { Dock = DockStyle.Fill };
     private readonly TextBox _uninstallArgsTextBox = new() { Dock = DockStyle.Fill };
     private readonly TextBox _logsDirectoryTextBox = new() { Dock = DockStyle.Fill };
+    private readonly TextBox _cacheDirectoryTextBox = new() { Dock = DockStyle.Fill };
     private readonly TextBox _backupsDirectoryTextBox = new() { Dock = DockStyle.Fill };
     private readonly TextBox _signingKeyTextBox = new() { Dock = DockStyle.Fill };
     private readonly TextBox _uploadRepositoryTextBox = new() { Dock = DockStyle.Fill };
@@ -83,6 +85,7 @@ public sealed class SettingsForm : Form
         AddSimpleRow(root, row++, "Arguments audit", _auditArgsTextBox);
         AddSimpleRow(root, row++, "Arguments uninstall", _uninstallArgsTextBox);
         AddBrowseRow(root, row++, "Dossier logs", _logsDirectoryTextBox, BrowseLogsDirectory);
+        AddBrowseRow(root, row++, "Dossier cache", _cacheDirectoryTextBox, BrowseCacheDirectory);
         AddBrowseRow(root, row++, "Dossier backups", _backupsDirectoryTextBox, BrowseBackupsDirectory);
         AddBrowseRow(root, row++, "Cle de signature", _signingKeyTextBox, BrowseSigningKey);
         AddSimpleRow(root, row++, "Repository upload", _uploadRepositoryTextBox);
@@ -92,7 +95,7 @@ public sealed class SettingsForm : Form
         {
             AutoSize = true,
             Dock = DockStyle.Fill,
-            Text = "Placeholders disponibles dans les arguments: {packageFolder}, {waptFilePath}, {packageId}, {signingKeyPath}, {uploadRepositoryUrl}, {repositoryOption}, {overwriteFlag}"
+            Text = $"Chemin WAPT: laissez 'wapt-get.exe' pour l'auto-detection. Donnees locales: {AppPaths.BaseDirectory}. Placeholders disponibles: {{packageFolder}}, {{waptFilePath}}, {{packageId}}, {{signingKeyPath}}, {{uploadRepositoryUrl}}, {{repositoryOption}}, {{overwriteFlag}}"
         };
         root.Controls.Add(helpLabel, 0, row);
         root.SetColumnSpan(helpLabel, 3);
@@ -143,6 +146,7 @@ public sealed class SettingsForm : Form
         _auditArgsTextBox.Text = settings.AuditPackageArguments;
         _uninstallArgsTextBox.Text = settings.UninstallPackageArguments;
         _logsDirectoryTextBox.Text = settings.LogsDirectory ?? string.Empty;
+        _cacheDirectoryTextBox.Text = settings.CacheDirectory ?? string.Empty;
         _backupsDirectoryTextBox.Text = settings.BackupsDirectory ?? string.Empty;
         _signingKeyTextBox.Text = settings.SigningKeyPath ?? string.Empty;
         _uploadRepositoryTextBox.Text = settings.UploadRepositoryUrl ?? string.Empty;
@@ -153,7 +157,7 @@ public sealed class SettingsForm : Form
     {
         Settings = new AppSettings
         {
-            WaptExecutablePath = _waptPathTextBox.Text.Trim(),
+            WaptExecutablePath = string.IsNullOrWhiteSpace(_waptPathTextBox.Text) ? CommandExecutionResult.DefaultExecutableName : _waptPathTextBox.Text.Trim(),
             CatalogRootFolder = EmptyToNull(_catalogRootFolderTextBox.Text),
             CatalogScanRecursively = _catalogRecursiveCheckBox.Checked,
             CatalogSemiRecursiveDepth = (int)_catalogDepthInput.Value,
@@ -172,10 +176,12 @@ public sealed class SettingsForm : Form
             AuditPackageArguments = _auditArgsTextBox.Text.Trim(),
             UninstallPackageArguments = _uninstallArgsTextBox.Text.Trim(),
             LogsDirectory = EmptyToNull(_logsDirectoryTextBox.Text),
+            CacheDirectory = EmptyToNull(_cacheDirectoryTextBox.Text),
             BackupsDirectory = EmptyToNull(_backupsDirectoryTextBox.Text),
             SigningKeyPath = EmptyToNull(_signingKeyTextBox.Text),
             UploadRepositoryUrl = EmptyToNull(_uploadRepositoryTextBox.Text),
-            DefaultPackageFolder = EmptyToNull(_defaultPackageFolderTextBox.Text)
+            DefaultPackageFolder = EmptyToNull(_defaultPackageFolderTextBox.Text),
+            HasCompletedFirstRunExperience = Settings.HasCompletedFirstRunExperience
         };
 
         DialogResult = DialogResult.OK;
@@ -197,6 +203,8 @@ public sealed class SettingsForm : Form
     }
 
     private void BrowseLogsDirectory(object? sender, EventArgs e) => BrowseFolder(_logsDirectoryTextBox, "Selectionner le dossier de logs");
+
+    private void BrowseCacheDirectory(object? sender, EventArgs e) => BrowseFolder(_cacheDirectoryTextBox, "Selectionner le dossier de cache");
 
     private void BrowseBackupsDirectory(object? sender, EventArgs e) => BrowseFolder(_backupsDirectoryTextBox, "Selectionner le dossier de backups");
 
@@ -271,6 +279,7 @@ public sealed class SettingsForm : Form
         DryRunEnabled = source.DryRunEnabled,
         CreateBackups = source.CreateBackups,
         LogsDirectory = source.LogsDirectory,
+        CacheDirectory = source.CacheDirectory,
         BackupsDirectory = source.BackupsDirectory,
         EnableSigning = source.EnableSigning,
         EnableUpload = source.EnableUpload,
@@ -278,6 +287,7 @@ public sealed class SettingsForm : Form
         UploadOverwriteExisting = source.UploadOverwriteExisting,
         SigningKeyPath = source.SigningKeyPath,
         UploadRepositoryUrl = source.UploadRepositoryUrl,
-        DefaultPackageFolder = source.DefaultPackageFolder
+        DefaultPackageFolder = source.DefaultPackageFolder,
+        HasCompletedFirstRunExperience = source.HasCompletedFirstRunExperience
     };
 }

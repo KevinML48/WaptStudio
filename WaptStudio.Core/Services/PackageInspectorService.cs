@@ -203,13 +203,7 @@ public sealed partial class PackageInspectorService : IPackageInspectorService
     }
 
     private static string? ExtractReferencedInstallerFromSetupPy(string content)
-    {
-        var match = Regex.Match(
-            content,
-            @"(?im)^(?!\s*#).*?\binstall_(?:msi|exe)_if_needed\(\s*['""'](?<installer>[^'""\r\n]+\.(?:msi|exe))['""']");
-
-        return match.Success ? match.Groups["installer"].Value.Trim() : null;
-    }
+        => SetupPyInstallerReferenceParser.ExtractReferencedInstallerName(content);
 
 }
 

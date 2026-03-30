@@ -25,4 +25,6 @@ public sealed class PublicationPreparationResult
     public string RecommendationMessage { get; init; } = string.Empty;
 
     public bool CanPrepareForConsolePublish => PackageReady && HasRealWaptFile;
+
+    public bool CanPrepareDirectUpload => CanPrepareForConsolePublish && DirectUploadAvailable;
 }

@@ -23,8 +23,8 @@ public sealed class ValidationResult
 
     public string VerdictLabel => Verdict switch
     {
-        ReadinessVerdict.ReadyForBuildUpload => "PRET POUR BUILD / UPLOAD",
-        ReadinessVerdict.ReadyWithWarnings => "PRET AVEC AVERTISSEMENTS",
+        ReadinessVerdict.ReadyForBuildUpload => "PRET POUR CONSTRUIRE",
+        ReadinessVerdict.ReadyWithWarnings => "CONSTRUCTIBLE AVEC VIGILANCE",
         _ => "BLOQUE"
     };
 

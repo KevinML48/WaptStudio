@@ -90,6 +90,52 @@ public sealed class PackageInspectorServiceTests : IDisposable
         Assert.Equal("cd48-waptstudio_2501_windows_DEV.wapt", result.ExpectedWaptFileName);
     }
 
+    [Fact]
+    public async Task AnalyzePackageAsync_ResolvesReferencedInstaller_FromSimpleMsiConstant()
+    {
+        var packageFolder = Path.Combine(_rootDirectory, "pkg-msi-constant");
+        Directory.CreateDirectory(packageFolder);
+
+        await File.WriteAllTextAsync(
+            Path.Combine(packageFolder, "setup.py"),
+            "from setuphelpers import *\n" +
+            "MSI_NAME = \"pdf24-creator-11.1.0.msi\"\n" +
+            "def install():\n" +
+            "    install_msi_if_needed(MSI_NAME)\n");
+        await File.WriteAllTextAsync(Path.Combine(packageFolder, "control"), "package: tis.pdf24\nversion: 11.1.0\n");
+        await File.WriteAllTextAsync(Path.Combine(packageFolder, "pdf24-creator-11.1.0.msi"), "binary-placeholder");
+
+        var service = new PackageInspectorService();
+        var result = await service.AnalyzePackageAsync(packageFolder);
+
+        Assert.Equal("pdf24-creator-11.1.0.msi", result.ReferencedInstallerName);
+        Assert.NotNull(result.InstallerPath);
+        Assert.Equal("MSI", result.InstallerType);
+    }
+
+    [Fact]
+    public async Task AnalyzePackageAsync_ResolvesReferencedInstaller_FromSimpleExeConstant()
+    {
+        var packageFolder = Path.Combine(_rootDirectory, "pkg-exe-constant");
+        Directory.CreateDirectory(packageFolder);
+
+        await File.WriteAllTextAsync(
+            Path.Combine(packageFolder, "setup.py"),
+            "from setuphelpers import *\n" +
+            "EXE_NAME = 'setup.exe'\n" +
+            "def install():\n" +
+            "    install_exe_if_needed(EXE_NAME)\n");
+        await File.WriteAllTextAsync(Path.Combine(packageFolder, "control"), "package: tis.setup\nversion: 1.0.0\n");
+        await File.WriteAllTextAsync(Path.Combine(packageFolder, "setup.exe"), "binary-placeholder");
+
+        var service = new PackageInspectorService();
+        var result = await service.AnalyzePackageAsync(packageFolder);
+
+        Assert.Equal("setup.exe", result.ReferencedInstallerName);
+        Assert.NotNull(result.InstallerPath);
+        Assert.Equal("EXE", result.InstallerType);
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(_rootDirectory))

@@ -179,6 +179,9 @@ public sealed class PackageSynchronizationPreviewForm : Form
         builder.AppendLine($"Installeur actuel: {plan.CurrentInstallerName ?? "Non detecte"}");
         builder.AppendLine($"Type actuel: {plan.CurrentInstallerType ?? "Non detecte"}");
         builder.AppendLine($"Version actuelle: {plan.CurrentVersion ?? "Non detectee"}");
+        builder.AppendLine($"Strategie de version: {plan.VersionStrategyLabel}");
+        builder.AppendLine($"Mode dossier: {plan.FolderUpdateModeLabel}");
+        builder.AppendLine($"Version suggeree par l'installeur: {plan.SuggestedVersion ?? "Aucune suggestion fiable"}");
         builder.AppendLine($"Nom actuel: {plan.CurrentVisibleName ?? "Non detecte"}");
         builder.AppendLine($"Dossier actuel: {plan.CurrentPackageFolder}");
         return builder.ToString();
@@ -189,6 +192,8 @@ public sealed class PackageSynchronizationPreviewForm : Form
         var builder = new StringBuilder();
         builder.AppendLine($"Nouvel installeur: {plan.TargetInstallerName ?? "Non detecte"}");
         builder.AppendLine($"Nouveau type: {plan.TargetInstallerType ?? "Non detecte"}");
+        builder.AppendLine($"Strategie appliquee: {plan.VersionStrategyLabel}");
+        builder.AppendLine($"Mode dossier applique: {plan.FolderUpdateModeLabel}");
         builder.AppendLine($"Nouvelle version: {plan.TargetVersion ?? "Non detectee"}");
         builder.AppendLine($"Nom apres mise a jour: {plan.TargetVisibleName ?? "Non detecte"}");
         builder.AppendLine($"Dossier vise: {plan.TargetPackageFolder ?? plan.CurrentPackageFolder}");
@@ -203,6 +208,19 @@ public sealed class PackageSynchronizationPreviewForm : Form
         foreach (var line in plan.SummaryLines.Distinct())
         {
             builder.AppendLine($"- {line}");
+        }
+
+        builder.AppendLine();
+        builder.AppendLine($"Ancienne version: {plan.CurrentVersion ?? "Non detectee"}");
+        builder.AppendLine($"Strategie choisie: {plan.VersionStrategyLabel}");
+        builder.AppendLine($"Mode dossier choisi: {plan.FolderUpdateModeLabel}");
+        builder.AppendLine($"Version cible: {plan.TargetVersion ?? "Non detectee"}");
+        builder.AppendLine($"Ancien installeur: {plan.CurrentInstallerName ?? "Non detecte"}");
+        builder.AppendLine($"Nouvel installeur: {plan.TargetInstallerName ?? "Non detecte"}");
+        builder.AppendLine($"Nom .wapt attendu: {plan.ExpectedWaptFileName ?? "Non calculable"}");
+        if (!string.IsNullOrWhiteSpace(plan.SuggestedVersionedPackageFolder))
+        {
+            builder.AppendLine($"Dossier versionne suggere: {plan.SuggestedVersionedPackageFolder}");
         }
 
         if (plan.FilesModified.Count > 0)
@@ -268,11 +286,18 @@ public sealed class PackageSynchronizationPreviewForm : Form
         builder.AppendLine();
         builder.AppendLine($"Installeur: {plan.CurrentInstallerName ?? "N/A"} -> {plan.TargetInstallerName ?? "N/A"}");
         builder.AppendLine($"Type: {plan.CurrentInstallerType ?? "N/A"} -> {plan.TargetInstallerType ?? "N/A"}");
+        builder.AppendLine($"Strategie de version: {plan.VersionStrategyLabel}");
+        builder.AppendLine($"Mode dossier: {plan.FolderUpdateModeLabel}");
+        builder.AppendLine($"Version suggeree: {plan.SuggestedVersion ?? "Aucune suggestion fiable"}");
         builder.AppendLine($"Version: {plan.CurrentVersion ?? "N/A"} -> {plan.TargetVersion ?? "N/A"}");
         builder.AppendLine($"Name: {plan.CurrentVisibleName ?? "N/A"} -> {plan.TargetVisibleName ?? "N/A"}");
         builder.AppendLine($"Description: {plan.CurrentDescription ?? "N/A"} -> {plan.TargetDescription ?? "N/A"}");
         builder.AppendLine($"Description FR: {plan.CurrentDescriptionFr ?? "N/A"} -> {plan.TargetDescriptionFr ?? "N/A"}");
         builder.AppendLine($"Dossier: {plan.CurrentPackageFolder} -> {plan.TargetPackageFolder ?? plan.CurrentPackageFolder}");
+        if (!string.IsNullOrWhiteSpace(plan.SuggestedVersionedPackageFolder))
+        {
+            builder.AppendLine($"Dossier versionne suggere: {plan.SuggestedVersionedPackageFolder}");
+        }
         builder.AppendLine($"Nom .wapt attendu: {plan.ExpectedWaptFileName ?? "N/A"}");
         builder.AppendLine();
         builder.AppendLine("Resume des synchronisations:");

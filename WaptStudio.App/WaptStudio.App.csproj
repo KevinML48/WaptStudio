@@ -5,6 +5,7 @@
     <UseWindowsForms>true</UseWindowsForms>
     <RootNamespace>WaptStudio.App</RootNamespace>
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
   </PropertyGroup>
 
   <ItemGroup>

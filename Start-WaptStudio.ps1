@@ -2,6 +2,13 @@ $ErrorActionPreference = 'Stop'
 
 $scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $projectPath = Join-Path $scriptRoot 'WaptStudio.App\WaptStudio.App.csproj'
+$publishedExePath = Join-Path $scriptRoot 'win-x64\self-contained\WaptStudio.App.exe'
+
+if (Test-Path $publishedExePath) {
+    Write-Host 'Lancement de la version publiee self-contained...' -ForegroundColor Cyan
+    & $publishedExePath
+    exit $LASTEXITCODE
+}
 
 Write-Host 'Verification de l''environnement .NET...' -ForegroundColor Cyan
 

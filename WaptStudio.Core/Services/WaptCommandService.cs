@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using WaptStudio.Core.Models;
 using WaptStudio.Core.Services.Interfaces;
+using WaptStudio.Core.Utilities;
 
 namespace WaptStudio.Core.Services;
 
@@ -84,9 +85,14 @@ public sealed class WaptCommandService : IWaptCommandService
         WaptExecutionContext? executionContext = null,
         string? packageId = null)
     {
-        var executablePath = string.IsNullOrWhiteSpace(settings.WaptExecutablePath)
-            ? CommandExecutionResult.DefaultExecutableName
+        var environmentInfo = WaptEnvironmentDetector.Inspect(settings);
+        var configuredExecutablePath = string.IsNullOrWhiteSpace(settings.WaptExecutablePath)
+            ? null
             : settings.WaptExecutablePath;
+        var displayExecutablePath = configuredExecutablePath
+            ?? CommandExecutionResult.DefaultExecutableName;
+        var executablePath = environmentInfo.EffectiveExecutablePath
+            ?? displayExecutablePath;
         var effectiveTemplate = NormalizeTemplate(actionType, template);
 
         if (string.IsNullOrWhiteSpace(effectiveTemplate))
@@ -100,10 +106,10 @@ public sealed class WaptCommandService : IWaptCommandService
 
         if (settings.DryRunEnabled)
         {
-            return CreateDryRunResult(executablePath, arguments, executedCommand, workingDirectory);
+            return CreateDryRunResult(displayExecutablePath, arguments, BuildExecutedCommand(displayExecutablePath, arguments), workingDirectory);
         }
 
-        var preconditionFailure = ValidateRealExecutionPreconditions(actionType, settings, effectiveTemplate, packageFolder, resolvedWaptFilePath, executionContext, buildError);
+        var preconditionFailure = ValidateRealExecutionPreconditions(actionType, settings, environmentInfo, effectiveTemplate, packageFolder, resolvedWaptFilePath, executionContext, buildError);
         if (!string.IsNullOrWhiteSpace(preconditionFailure))
         {
             return CreateBlockedResult(executablePath, arguments, workingDirectory, preconditionFailure, executedCommand);
@@ -211,11 +217,11 @@ public sealed class WaptCommandService : IWaptCommandService
             : Regex.Replace(normalizedTemplate, @"\s{2,}", " ").Trim();
     }
 
-    private static string? ValidateRealExecutionPreconditions(WaptActionType actionType, AppSettings settings, string template, string? packageFolder, string? waptFilePath, WaptExecutionContext? executionContext, string? buildError)
+    private static string? ValidateRealExecutionPreconditions(WaptActionType actionType, AppSettings settings, WaptEnvironmentInfo environmentInfo, string template, string? packageFolder, string? waptFilePath, WaptExecutionContext? executionContext, string? buildError)
     {
-        if (string.IsNullOrWhiteSpace(settings.WaptExecutablePath))
+        if (!environmentInfo.IsWaptExecutableAvailable)
         {
-            return "Le chemin vers l'executable WAPT n'est pas configure.";
+            return "Executable WAPT introuvable. Installez WAPT, ajoutez wapt-get.exe au PATH ou renseignez un chemin explicite dans les parametres.";
         }
 
         if (string.IsNullOrWhiteSpace(template))

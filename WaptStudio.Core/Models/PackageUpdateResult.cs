@@ -18,6 +18,8 @@ public sealed class PackageUpdateResult
 
     public bool PackageFolderRenamed { get; set; }
 
+    public bool PackageFolderCloned { get; set; }
+
     public PackageInfo? UpdatedPackageInfo { get; set; }
 
     public PackageSynchronizationPlan? SynchronizationPlan { get; set; }

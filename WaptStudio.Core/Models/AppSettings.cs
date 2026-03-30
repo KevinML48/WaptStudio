@@ -32,6 +32,8 @@ public sealed class AppSettings
 
     public string? LogsDirectory { get; set; }
 
+    public string? CacheDirectory { get; set; }
+
     public string? BackupsDirectory { get; set; }
 
     public bool EnableSigning { get; set; } = true;
@@ -47,4 +49,6 @@ public sealed class AppSettings
     public string? UploadRepositoryUrl { get; set; }
 
     public string? DefaultPackageFolder { get; set; }
+
+    public bool HasCompletedFirstRunExperience { get; set; }
 }

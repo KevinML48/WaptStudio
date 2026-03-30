@@ -9,10 +9,12 @@ public interface IPackageUpdateService
     Task<PackageSynchronizationPlan> PreviewReplacementAsync(
         PackageInfo packageInfo,
         string newInstallerFilePath,
+        PackageVersionSelection? versionSelection = null,
         CancellationToken cancellationToken = default);
 
     Task<PackageUpdateResult> ReplaceInstallerAsync(
         PackageInfo packageInfo,
         string newInstallerFilePath,
+        PackageVersionSelection? versionSelection = null,
         CancellationToken cancellationToken = default);
 }

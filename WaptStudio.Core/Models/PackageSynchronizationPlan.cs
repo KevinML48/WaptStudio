@@ -6,6 +6,18 @@ public sealed class PackageSynchronizationPlan
 {
     public string PackageId { get; set; } = string.Empty;
 
+    public PackageVersionStrategy VersionStrategy { get; set; } = PackageVersionStrategy.KeepCurrentVersion;
+
+    public string VersionStrategyLabel { get; set; } = string.Empty;
+
+    public PackageFolderUpdateMode FolderUpdateMode { get; set; } = PackageFolderUpdateMode.UpdateCurrentFolder;
+
+    public string FolderUpdateModeLabel { get; set; } = string.Empty;
+
+    public string? SuggestedVersion { get; set; }
+
+    public string? SuggestedVersionedPackageFolder { get; set; }
+
     public string? CurrentVersion { get; set; }
 
     public string? TargetVersion { get; set; }
@@ -33,6 +45,10 @@ public sealed class PackageSynchronizationPlan
     public bool PackageFolderRenamePlanned { get; set; }
 
     public bool PackageFolderRenamePossible { get; set; }
+
+    public bool PackageFolderClonePlanned { get; set; }
+
+    public bool PackageFolderClonePossible { get; set; }
 
     public string ExpectedWaptFileName { get; set; } = string.Empty;
 

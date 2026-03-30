@@ -6,6 +6,7 @@ using WaptStudio.Core.Models;
 using WaptStudio.Core.Configuration;
 using WaptStudio.Core.Services;
 using WaptStudio.Core.Services.Interfaces;
+using WaptStudio.Core.Utilities;
 using Xunit;
 
 namespace WaptStudio.Tests;
@@ -54,7 +55,8 @@ public sealed class PackageUpdateServiceTests : IDisposable
         Assert.Contains("7z2409.msi", plan.FilesDeleted);
         Assert.Contains("setup.py", plan.FilesModified);
         Assert.Contains("control", plan.FilesModified);
-        Assert.Contains(plan.Warnings, warning => warning.Contains("Version du package preservee", StringComparison.Ordinal));
+        Assert.Equal(PackageVersionStrategy.KeepCurrentVersion, plan.VersionStrategy);
+        Assert.Contains(plan.Warnings, warning => warning.Contains("Aucun changement silencieux", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -114,7 +116,7 @@ public sealed class PackageUpdateServiceTests : IDisposable
         Assert.NotNull(result.SynchronizationPlan);
         Assert.Equal("tis.package_1.0.0.wapt", result.SynchronizationPlan!.ExpectedWaptFileName);
         Assert.Contains("app-1.0.0.msi", result.SynchronizationPlan.FilesDeleted);
-        Assert.Contains(result.SynchronizationPlan.Warnings, warning => warning.Contains("Version du package preservee", StringComparison.Ordinal));
+        Assert.Contains(result.SynchronizationPlan.Warnings, warning => warning.Contains("Aucun changement silencieux", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -235,7 +237,255 @@ public sealed class PackageUpdateServiceTests : IDisposable
         Assert.Equal("2501", plan.CurrentVersion);
         Assert.Equal("2501", plan.TargetVersion);
         Assert.Equal("cd48-waptstudio_2501_windows_DEV.wapt", plan.ExpectedWaptFileName);
-        Assert.Contains(plan.Warnings, warning => warning.Contains("Version du package preservee", StringComparison.Ordinal));
+        Assert.Contains(plan.Warnings, warning => warning.Contains("Aucun changement silencieux", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task PreviewReplacementAsync_IncrementsOnlyPackageRevision_WhenRequested()
+    {
+        var packageFolder = Path.Combine(_rootDirectory, "pdf24_11.0.0-1_windows_DEV-wapt");
+        Directory.CreateDirectory(packageFolder);
+
+        var oldInstaller = Path.Combine(packageFolder, "pdf24-11.0.0.exe");
+        var newInstallerSource = Path.Combine(_rootDirectory, "pdf24-11.0.0-build2.exe");
+
+        await File.WriteAllTextAsync(oldInstaller, "old");
+        await File.WriteAllTextAsync(newInstallerSource, "new");
+        await File.WriteAllTextAsync(Path.Combine(packageFolder, "setup.py"), "package = 'cd48-waptstudio-pdf24-creator'\nversion = '11.0.0-1'\ninstall_exe_if_needed('pdf24-11.0.0.exe')\n");
+        await File.WriteAllTextAsync(Path.Combine(packageFolder, "control"), "package: cd48-waptstudio-pdf24-creator\nversion: 11.0.0-1\nname: PDF24 Creator 11\nfilename: pdf24-11.0.0.exe\n");
+
+        var inspector = new PackageInspectorService();
+        var packageInfo = await inspector.AnalyzePackageAsync(packageFolder);
+        var settingsService = new TestSettingsService(new AppSettings { CreateBackups = true, BackupsDirectory = Path.Combine(_rootDirectory, "backups") });
+        var service = new PackageUpdateService(inspector, settingsService, new BackupRestoreService(settingsService));
+
+        var selection = new PackageVersionSelection { Strategy = PackageVersionStrategy.IncrementPackageRevision };
+        var plan = await service.PreviewReplacementAsync(packageInfo, newInstallerSource, selection);
+
+        Assert.Equal("11.0.0-1", plan.CurrentVersion);
+        Assert.Equal("11.0.0-2", plan.TargetVersion);
+        Assert.Equal(PackageVersionStrategy.IncrementPackageRevision, plan.VersionStrategy);
+        Assert.Equal("Incrementer la revision du paquet", plan.VersionStrategyLabel);
+        Assert.Equal("cd48-waptstudio-pdf24-creator_11.0.0-2_windows_DEV.wapt", plan.ExpectedWaptFileName);
+    }
+
+    [Fact]
+    public async Task ReplaceInstallerAsync_ReplacesProductVersionExplicitly_AndKeepsPackageIdStable()
+    {
+        var packageFolder = Path.Combine(_rootDirectory, "cd48-waptstudio-pdf24-creator_9.1.1-1_windows_DEV-wapt");
+        Directory.CreateDirectory(packageFolder);
+
+        var oldInstaller = Path.Combine(packageFolder, "pdf24-9.1.1.exe");
+        var newInstallerSource = Path.Combine(_rootDirectory, "pdf24-11.0.0.exe");
+
+        await File.WriteAllTextAsync(oldInstaller, "old");
+        await File.WriteAllTextAsync(newInstallerSource, "new");
+        await File.WriteAllTextAsync(Path.Combine(packageFolder, "setup.py"), "package = 'cd48-waptstudio-pdf24-creator'\nversion = '9.1.1-1'\ninstall_exe_if_needed('pdf24-9.1.1.exe')\n");
+        await File.WriteAllTextAsync(Path.Combine(packageFolder, "control"), "package: cd48-waptstudio-pdf24-creator\nversion: 9.1.1-1\nname: PDF24 Creator 9\ndescription: PDF24 Creator 9.1.1-1\ndescription_fr: PDF24 Creator 9.1.1-1 FR\nfilename: pdf24-9.1.1.exe\n");
+
+        var inspector = new PackageInspectorService();
+        var packageInfo = await inspector.AnalyzePackageAsync(packageFolder);
+        var settingsService = new TestSettingsService(new AppSettings { CreateBackups = true, BackupsDirectory = Path.Combine(_rootDirectory, "backups") });
+        var service = new PackageUpdateService(inspector, settingsService, new BackupRestoreService(settingsService));
+
+        var selection = new PackageVersionSelection
+        {
+            Strategy = PackageVersionStrategy.SetExplicitVersion,
+            ExplicitVersion = "11.0.0-1"
+        };
+
+        var result = await service.ReplaceInstallerAsync(packageInfo, newInstallerSource, selection);
+
+        Assert.True(result.Success);
+        Assert.Equal("cd48-waptstudio-pdf24-creator", result.UpdatedPackageInfo!.PackageName);
+        Assert.Equal("11.0.0-1", result.UpdatedPackageInfo.Version);
+        Assert.Equal("cd48-waptstudio-pdf24-creator_11.0.0-1_windows_DEV.wapt", result.UpdatedPackageInfo.ExpectedWaptFileName);
+
+        var controlContent = await File.ReadAllTextAsync(Path.Combine(result.UpdatedPackageFolder!, "control"));
+        var setupContent = await File.ReadAllTextAsync(Path.Combine(result.UpdatedPackageFolder!, "setup.py"));
+
+        Assert.Contains("package: cd48-waptstudio-pdf24-creator", controlContent);
+        Assert.Contains("version: 11.0.0-1", controlContent);
+        Assert.True(
+            setupContent.Contains("11.0.0-1", StringComparison.Ordinal),
+            setupContent.Replace("\r", "<CR>").Replace("\n", "<NL>"));
+        Assert.Contains(result.ChangeSummaryLines, line => line.Contains("Version: 9.1.1-1 -> 11.0.0-1", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task ReplaceInstallerAsync_CreatesVersionedFolderClone_AndPreservesExistingPackageContent()
+    {
+        var packageFolder = Path.Combine(_rootDirectory, "cd48-waptstudio-pdf24-creator_9.1.1-1_windows_DEV-wapt");
+        Directory.CreateDirectory(packageFolder);
+        Directory.CreateDirectory(Path.Combine(packageFolder, "WAPT"));
+        Directory.CreateDirectory(Path.Combine(packageFolder, "scripts"));
+        Directory.CreateDirectory(Path.Combine(packageFolder, ".waptstudio-backups"));
+
+        var oldInstaller = Path.Combine(packageFolder, "pdf24-9.1.1.exe");
+        var newInstallerSource = Path.Combine(_rootDirectory, "pdf24-11.0.0.exe");
+
+        await File.WriteAllTextAsync(oldInstaller, "old");
+        await File.WriteAllTextAsync(newInstallerSource, "new");
+        await File.WriteAllTextAsync(Path.Combine(packageFolder, "setup.py"),
+            "package = 'cd48-waptstudio-pdf24-creator'\n" +
+            "version = '9.1.1-1'\n\n" +
+            "def install():\n    print('install hook')\n\n" +
+            "def audit():\n    print('audit hook')\n\n" +
+            "def uninstall():\n    print('uninstall hook')\n\n" +
+            "print(\"Installing: pdf24-9.1.1.exe\")\n" +
+            "install_exe_if_needed('pdf24-9.1.1.exe')\n");
+        await File.WriteAllTextAsync(Path.Combine(packageFolder, "control"), "package: cd48-waptstudio-pdf24-creator\nversion: 9.1.1-1\nname: PDF24 Creator 9\ndescription: PDF24 Creator 9.1.1-1\ndescription_fr: PDF24 Creator 9.1.1-1 FR\nfilename: pdf24-9.1.1.exe\n");
+        await File.WriteAllTextAsync(Path.Combine(packageFolder, "scripts", "custom.ps1"), "Write-Host 'custom script'\n");
+        await File.WriteAllTextAsync(Path.Combine(packageFolder, "WAPT", "icon.png"), "png");
+        await File.WriteAllTextAsync(Path.Combine(packageFolder, "obsolete.wapt"), "generated artifact");
+        await File.WriteAllTextAsync(Path.Combine(packageFolder, ".waptstudio-backups", "old.txt"), "backup");
+
+        var inspector = new PackageInspectorService();
+        var packageInfo = await inspector.AnalyzePackageAsync(packageFolder);
+        var settingsService = new TestSettingsService(new AppSettings { CreateBackups = true, BackupsDirectory = Path.Combine(_rootDirectory, "backups") });
+        var service = new PackageUpdateService(inspector, settingsService, new BackupRestoreService(settingsService));
+
+        var selection = new PackageVersionSelection
+        {
+            Strategy = PackageVersionStrategy.SetExplicitVersion,
+            ExplicitVersion = "11.0.0-1",
+            FolderUpdateMode = PackageFolderUpdateMode.CreateVersionedFolderClone
+        };
+
+        var result = await service.ReplaceInstallerAsync(packageInfo, newInstallerSource, selection);
+        var clonedFolder = Path.Combine(_rootDirectory, "cd48-waptstudio-pdf24-creator_11.0.0-1_windows_DEV-wapt");
+
+        Assert.True(result.Success);
+        Assert.True(result.PackageFolderCloned);
+        Assert.False(result.PackageFolderRenamed);
+        Assert.Equal(clonedFolder, result.UpdatedPackageFolder);
+        Assert.True(Directory.Exists(packageFolder));
+        Assert.True(Directory.Exists(clonedFolder));
+
+        var sourceSetupContent = await File.ReadAllTextAsync(Path.Combine(packageFolder, "setup.py"));
+        var clonedSetupContent = await File.ReadAllTextAsync(Path.Combine(clonedFolder, "setup.py"));
+        var clonedControlContent = await File.ReadAllTextAsync(Path.Combine(clonedFolder, "control"));
+
+        Assert.Contains("version = '9.1.1-1'", sourceSetupContent);
+        Assert.Contains("pdf24-9.1.1.exe", sourceSetupContent);
+
+        Assert.Contains("def install()", clonedSetupContent);
+        Assert.Contains("def audit()", clonedSetupContent);
+        Assert.Contains("def uninstall()", clonedSetupContent);
+        Assert.Contains("install_exe_if_needed('pdf24-11.0.0.exe')", clonedSetupContent);
+        Assert.Contains("Installing: pdf24-11.0.0.exe", clonedSetupContent);
+
+        Assert.Contains("package: cd48-waptstudio-pdf24-creator", clonedControlContent);
+        Assert.Contains("version: 11.0.0-1", clonedControlContent);
+        Assert.True(File.Exists(Path.Combine(clonedFolder, "scripts", "custom.ps1")));
+        Assert.True(File.Exists(Path.Combine(clonedFolder, "WAPT", "icon.png")));
+        Assert.False(File.Exists(Path.Combine(clonedFolder, "obsolete.wapt")));
+        Assert.False(Directory.Exists(Path.Combine(clonedFolder, ".waptstudio-backups")));
+    }
+
+    [Fact]
+    public async Task ReplaceInstallerAsync_CanStayInCurrentFolder_WhenExplicitlyRequestedDuringVersionChange()
+    {
+        var packageFolder = Path.Combine(_rootDirectory, "cd48-waptstudio-pdf24-creator_9.1.1-1_windows_DEV-wapt");
+        Directory.CreateDirectory(packageFolder);
+
+        var oldInstaller = Path.Combine(packageFolder, "pdf24-9.1.1.exe");
+        var newInstallerSource = Path.Combine(_rootDirectory, "pdf24-11.0.0.exe");
+
+        await File.WriteAllTextAsync(oldInstaller, "old");
+        await File.WriteAllTextAsync(newInstallerSource, "new");
+        await File.WriteAllTextAsync(Path.Combine(packageFolder, "setup.py"),
+            "package = 'cd48-waptstudio-pdf24-creator'\nversion = '9.1.1-1'\n\n" +
+            "def install():\n    pass\n\n" +
+            "install_exe_if_needed('pdf24-9.1.1.exe')\n");
+        await File.WriteAllTextAsync(Path.Combine(packageFolder, "control"), "package: cd48-waptstudio-pdf24-creator\nversion: 9.1.1-1\nfilename: pdf24-9.1.1.exe\n");
+
+        var inspector = new PackageInspectorService();
+        var packageInfo = await inspector.AnalyzePackageAsync(packageFolder);
+        var settingsService = new TestSettingsService(new AppSettings { CreateBackups = true, BackupsDirectory = Path.Combine(_rootDirectory, "backups") });
+        var service = new PackageUpdateService(inspector, settingsService, new BackupRestoreService(settingsService));
+
+        var selection = new PackageVersionSelection
+        {
+            Strategy = PackageVersionStrategy.SetExplicitVersion,
+            ExplicitVersion = "11.0.0-1",
+            FolderUpdateMode = PackageFolderUpdateMode.UpdateCurrentFolder
+        };
+
+        var result = await service.ReplaceInstallerAsync(packageInfo, newInstallerSource, selection);
+        var setupContent = await File.ReadAllTextAsync(Path.Combine(packageFolder, "setup.py"));
+        var controlContent = await File.ReadAllTextAsync(Path.Combine(packageFolder, "control"));
+
+        Assert.True(result.Success);
+        Assert.False(result.PackageFolderCloned);
+        Assert.False(result.PackageFolderRenamed);
+        Assert.Equal(packageFolder, result.UpdatedPackageFolder);
+        Assert.Contains("def install()", setupContent);
+        Assert.Contains("install_exe_if_needed('pdf24-11.0.0.exe')", setupContent);
+        Assert.Contains("package: cd48-waptstudio-pdf24-creator", controlContent);
+        Assert.Contains("version: 11.0.0-1", controlContent);
+    }
+
+    [Fact]
+    public async Task PreviewReplacementAsync_ExposesFolderCloneMode_WhenVersionedFolderWillBeCreated()
+    {
+        var packageFolder = Path.Combine(_rootDirectory, "cd48-waptstudio-pdf24-creator_9.1.1-1_windows_DEV-wapt");
+        Directory.CreateDirectory(packageFolder);
+
+        var oldInstaller = Path.Combine(packageFolder, "pdf24-9.1.1.exe");
+        var newInstallerSource = Path.Combine(_rootDirectory, "pdf24-11.0.0.exe");
+
+        await File.WriteAllTextAsync(oldInstaller, "old");
+        await File.WriteAllTextAsync(newInstallerSource, "new");
+        await File.WriteAllTextAsync(Path.Combine(packageFolder, "setup.py"), "package = 'cd48-waptstudio-pdf24-creator'\nversion = '9.1.1-1'\ninstall_exe_if_needed('pdf24-9.1.1.exe')\n");
+        await File.WriteAllTextAsync(Path.Combine(packageFolder, "control"), "package: cd48-waptstudio-pdf24-creator\nversion: 9.1.1-1\nfilename: pdf24-9.1.1.exe\n");
+
+        var inspector = new PackageInspectorService();
+        var packageInfo = await inspector.AnalyzePackageAsync(packageFolder);
+        var settingsService = new TestSettingsService(new AppSettings { CreateBackups = true, BackupsDirectory = Path.Combine(_rootDirectory, "backups") });
+        var service = new PackageUpdateService(inspector, settingsService, new BackupRestoreService(settingsService));
+
+        var selection = new PackageVersionSelection
+        {
+            Strategy = PackageVersionStrategy.SetExplicitVersion,
+            ExplicitVersion = "11.0.0-1",
+            FolderUpdateMode = PackageFolderUpdateMode.CreateVersionedFolderClone
+        };
+
+        var plan = await service.PreviewReplacementAsync(packageInfo, newInstallerSource, selection);
+
+        Assert.Equal(PackageFolderUpdateMode.CreateVersionedFolderClone, plan.FolderUpdateMode);
+        Assert.True(plan.PackageFolderClonePlanned);
+        Assert.True(plan.PackageFolderClonePossible);
+        Assert.Equal("Creer un nouveau dossier versionne en conservant le contenu existant", plan.FolderUpdateModeLabel);
+        Assert.Equal(Path.Combine(_rootDirectory, "cd48-waptstudio-pdf24-creator_11.0.0-1_windows_DEV-wapt"), plan.TargetPackageFolder);
+        Assert.Equal(plan.TargetPackageFolder, plan.SuggestedVersionedPackageFolder);
+    }
+
+    [Fact]
+    public async Task PreviewReplacementAsync_UsesNormalizedExplicitVersion_WhenUserProvidesProductOnlyVersion()
+    {
+        var packageFolder = Path.Combine(_rootDirectory, "pdf24_9.1.1-1_windows_DEV-wapt");
+        Directory.CreateDirectory(packageFolder);
+
+        var oldInstaller = Path.Combine(packageFolder, "pdf24-9.1.1.exe");
+        var newInstallerSource = Path.Combine(_rootDirectory, "pdf24-11.0.0.exe");
+
+        await File.WriteAllTextAsync(oldInstaller, "old");
+        await File.WriteAllTextAsync(newInstallerSource, "new");
+        await File.WriteAllTextAsync(Path.Combine(packageFolder, "setup.py"), "package = 'cd48-waptstudio-pdf24-creator'\nversion = '9.1.1-1'\ninstall_exe_if_needed('pdf24-9.1.1.exe')\n");
+        await File.WriteAllTextAsync(Path.Combine(packageFolder, "control"), "package: cd48-waptstudio-pdf24-creator\nversion: 9.1.1-1\nfilename: pdf24-9.1.1.exe\n");
+
+        var inspector = new PackageInspectorService();
+        var packageInfo = await inspector.AnalyzePackageAsync(packageFolder);
+        var settingsService = new TestSettingsService(new AppSettings { CreateBackups = true, BackupsDirectory = Path.Combine(_rootDirectory, "backups") });
+        var service = new PackageUpdateService(inspector, settingsService, new BackupRestoreService(settingsService));
+
+        var selection = new PackageVersionSelection { Strategy = PackageVersionStrategy.SetExplicitVersion, ExplicitVersion = "11.0.0" };
+        var plan = await service.PreviewReplacementAsync(packageInfo, newInstallerSource, selection);
+
+        Assert.Equal("11.0.0-1", plan.TargetVersion);
+        Assert.Equal("cd48-waptstudio-pdf24-creator_11.0.0-1_windows_DEV.wapt", plan.ExpectedWaptFileName);
     }
 
     [Fact]
@@ -318,6 +568,71 @@ public sealed class PackageUpdateServiceTests : IDisposable
         Assert.DoesNotContain("7z2409", setupContent);
 
         Assert.Contains("Installing: 7z2501.msi", setupContent);
+    }
+
+    [Fact]
+    public async Task ReplaceInstallerAsync_UpdatesSimpleMsiConstantReference_AndValidatesSetupPy()
+    {
+        var packageFolder = Path.Combine(_rootDirectory, "tis-pdf24-constant-msi_11.1.0-wapt");
+        Directory.CreateDirectory(packageFolder);
+
+        var oldInstaller = Path.Combine(packageFolder, "pdf24-creator-11.1.0.msi");
+        var newInstallerSource = Path.Combine(_rootDirectory, "pdf24-creator-11.2.0.msi");
+
+        await File.WriteAllTextAsync(oldInstaller, "old");
+        await File.WriteAllTextAsync(newInstallerSource, "new");
+        await File.WriteAllTextAsync(Path.Combine(packageFolder, "setup.py"),
+            "from setuphelpers import *\n" +
+            "MSI_NAME = \"pdf24-creator-11.1.0.msi\"\n" +
+            "def install():\n" +
+            "    print(\"Installing: %s\" % MSI_NAME)\n" +
+            "    install_msi_if_needed(MSI_NAME)\n");
+        await File.WriteAllTextAsync(Path.Combine(packageFolder, "control"),
+            "package: tis-pdf24\nversion: 11.1.0\nfilename: pdf24-creator-11.1.0.msi\n");
+
+        var inspector = new PackageInspectorService();
+        var packageInfo = await inspector.AnalyzePackageAsync(packageFolder);
+        var settingsService = new TestSettingsService(new AppSettings { CreateBackups = true, BackupsDirectory = Path.Combine(_rootDirectory, "backups") });
+        var service = new PackageUpdateService(inspector, settingsService, new BackupRestoreService(settingsService));
+
+        var result = await service.ReplaceInstallerAsync(packageInfo, newInstallerSource);
+
+        Assert.True(result.Success);
+        var setupContent = await File.ReadAllTextAsync(Path.Combine(result.UpdatedPackageFolder!, "setup.py"));
+        Assert.Contains("MSI_NAME = \"pdf24-creator-11.2.0.msi\"", setupContent);
+        Assert.Contains("install_msi_if_needed(MSI_NAME)", setupContent);
+    }
+
+    [Fact]
+    public async Task ReplaceInstallerAsync_UpdatesSimpleExeConstantReference_AndValidatesSetupPy()
+    {
+        var packageFolder = Path.Combine(_rootDirectory, "tis-pdf24-constant-exe_11.1.0-wapt");
+        Directory.CreateDirectory(packageFolder);
+
+        var oldInstaller = Path.Combine(packageFolder, "pdf24-creator-11.1.0.exe");
+        var newInstallerSource = Path.Combine(_rootDirectory, "pdf24-creator-11.2.0.exe");
+
+        await File.WriteAllTextAsync(oldInstaller, "old");
+        await File.WriteAllTextAsync(newInstallerSource, "new");
+        await File.WriteAllTextAsync(Path.Combine(packageFolder, "setup.py"),
+            "from setuphelpers import *\n" +
+            "EXE_NAME = 'pdf24-creator-11.1.0.exe'\n" +
+            "def install():\n" +
+            "    install_exe_if_needed(EXE_NAME)\n");
+        await File.WriteAllTextAsync(Path.Combine(packageFolder, "control"),
+            "package: tis-pdf24\nversion: 11.1.0\nfilename: pdf24-creator-11.1.0.exe\n");
+
+        var inspector = new PackageInspectorService();
+        var packageInfo = await inspector.AnalyzePackageAsync(packageFolder);
+        var settingsService = new TestSettingsService(new AppSettings { CreateBackups = true, BackupsDirectory = Path.Combine(_rootDirectory, "backups") });
+        var service = new PackageUpdateService(inspector, settingsService, new BackupRestoreService(settingsService));
+
+        var result = await service.ReplaceInstallerAsync(packageInfo, newInstallerSource);
+
+        Assert.True(result.Success);
+        var setupContent = await File.ReadAllTextAsync(Path.Combine(result.UpdatedPackageFolder!, "setup.py"));
+        Assert.Contains("EXE_NAME = 'pdf24-creator-11.2.0.exe'", setupContent);
+        Assert.Contains("install_exe_if_needed(EXE_NAME)", setupContent);
     }
 
     public void Dispose()
