@@ -76,8 +76,7 @@ public sealed class HistoryDetailsForm : Form
         builder.AppendLine($"Action: {entry.ActionType}");
         builder.AppendLine($"Date: {entry.Timestamp:yyyy-MM-dd HH:mm:ss}");
         builder.AppendLine($"Paquet: {entry.PackageName ?? "N/A"}");
-        builder.AppendLine($"Etat: {(entry.Success ? "Reussite" : "Echec ou action inachevee")}");
-        builder.AppendLine($"Synthese preparation: {entry.ReadinessVerdict ?? "N/A"}");
+        builder.AppendLine($"Resultat: {(entry.Success ? "Reussite" : "Echec ou action inachevee")}");
         builder.AppendLine($"Version: {entry.VersionBefore ?? "N/A"} -> {entry.VersionAfter ?? "N/A"}");
         builder.AppendLine($".wapt associe: {entry.WaptArtifactPath ?? "N/A"}");
         builder.AppendLine($"Resume: {entry.Message}");
@@ -98,7 +97,6 @@ public sealed class HistoryDetailsForm : Form
         builder.AppendLine($"Utilisateur Windows: {entry.WindowsUser}");
         builder.AppendLine($"Version avant: {entry.VersionBefore ?? "N/A"}");
         builder.AppendLine($"Version apres: {entry.VersionAfter ?? "N/A"}");
-        builder.AppendLine($"Synthese technique: {entry.ReadinessVerdict ?? "N/A"}");
         builder.AppendLine($"Chemin .wapt: {entry.WaptArtifactPath ?? "N/A"}");
         builder.AppendLine($"Duree (ms): {entry.DurationMilliseconds}");
         builder.AppendLine($"Exit code: {entry.ExitCode}");

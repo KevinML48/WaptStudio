@@ -17,19 +17,30 @@ public sealed class CredentialPromptForm : Form
     private readonly bool _requireCertificatePassword;
     private readonly bool _requireAdminUser;
     private readonly bool _requireAdminPassword;
+    private readonly bool _showRememberForSessionOption;
     private readonly TextBox _certificatePasswordTextBox = new() { Dock = DockStyle.Fill, UseSystemPasswordChar = true };
     private readonly TextBox _adminUserTextBox = new() { Dock = DockStyle.Fill };
     private readonly TextBox _adminPasswordTextBox = new() { Dock = DockStyle.Fill, UseSystemPasswordChar = true };
+    private readonly CheckBox _rememberForSessionCheckBox = new() { Text = "Memoriser pour cette session WaptStudio", AutoSize = true };
 
-    public CredentialPromptForm(string title, string description, bool requireCertificatePassword, bool requireAdminUser, bool requireAdminPassword)
+    public CredentialPromptForm(
+        string title,
+        string description,
+        bool requireCertificatePassword,
+        bool requireAdminUser,
+        bool requireAdminPassword,
+        bool showRememberForSessionOption = false,
+        bool rememberForSessionByDefault = false,
+        string confirmButtonText = "Continuer")
     {
         _requireCertificatePassword = requireCertificatePassword;
         _requireAdminUser = requireAdminUser;
         _requireAdminPassword = requireAdminPassword;
+        _showRememberForSessionOption = showRememberForSessionOption;
 
         Text = title;
         Width = 760;
-        Height = 420;
+        Height = showRememberForSessionOption ? 480 : 420;
         StartPosition = FormStartPosition.CenterParent;
         MinimizeBox = false;
         MaximizeBox = false;
@@ -84,7 +95,7 @@ public sealed class CredentialPromptForm : Form
         {
             AutoSize = true,
             MaximumSize = new Size(660, 0),
-            Text = description + Environment.NewLine + Environment.NewLine + "Les secrets restent uniquement en memoire pendant l'action en cours. Aucun mot de passe ni identifiant n'est enregistre dans les parametres, les logs ou l'historique.",
+            Text = description + Environment.NewLine + Environment.NewLine + "Aucun mot de passe ni identifiant n'est enregistre dans les parametres, les logs ou l'historique.",
             ForeColor = InfoColor,
             Margin = new Padding(0, 0, 0, 12)
         };
@@ -97,7 +108,9 @@ public sealed class CredentialPromptForm : Form
         {
             AutoSize = true,
             MaximumSize = new Size(660, 0),
-            Text = "Renseignez uniquement les champs demandes ci-dessous, puis continuez. WaptStudio purge ces donnees des que l'action est terminee.",
+            Text = _showRememberForSessionOption
+                ? "Vous pouvez reutiliser ces secrets pendant toute la session WaptStudio si vous cochez l'option de memorisation. Ils seront effaces a la fermeture de l'application ou sur demande."
+                : "Renseignez uniquement les champs demandes ci-dessous. Si un workflow bascule ensuite vers un terminal externe, certains prompts pourront encore apparaitre hors de l'application.",
             ForeColor = InfoColor,
             Margin = new Padding(0, 0, 0, 12)
         };
@@ -121,6 +134,17 @@ public sealed class CredentialPromptForm : Form
             AddRow(layout, row++, "Mot de passe administrateur WAPT", _adminPasswordTextBox);
         }
 
+        if (_showRememberForSessionOption)
+        {
+            _rememberForSessionCheckBox.Checked = rememberForSessionByDefault;
+            _rememberForSessionCheckBox.Margin = new Padding(0, 4, 0, 0);
+            _rememberForSessionCheckBox.ForeColor = HeadingColor;
+            layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            layout.Controls.Add(_rememberForSessionCheckBox, 0, row);
+            layout.SetColumnSpan(_rememberForSessionCheckBox, 2);
+            row++;
+        }
+
         card.Controls.Add(layout);
 
         var buttonsPanel = new FlowLayoutPanel
@@ -131,7 +155,7 @@ public sealed class CredentialPromptForm : Form
             BackColor = SurfaceColor
         };
 
-        var confirmButton = new Button { Text = "Continuer", AutoSize = true };
+        var confirmButton = new Button { Text = confirmButtonText, AutoSize = true };
         confirmButton.Click += Confirm;
         var cancelButton = new Button { Text = "Annuler", AutoSize = true, DialogResult = DialogResult.Cancel };
 
@@ -159,6 +183,8 @@ public sealed class CredentialPromptForm : Form
 
     public WaptExecutionContext? ExecutionContext { get; private set; }
 
+    public bool RememberSecretsForSession { get; private set; }
+
     private void Confirm(object? sender, EventArgs e)
     {
         if (_requireCertificatePassword && string.IsNullOrWhiteSpace(_certificatePasswordTextBox.Text))
@@ -185,6 +211,7 @@ public sealed class CredentialPromptForm : Form
             AdminUser = EmptyToNull(_adminUserTextBox.Text),
             AdminPassword = EmptyToNull(_adminPasswordTextBox.Text)
         };
+        RememberSecretsForSession = _showRememberForSessionOption && _rememberForSessionCheckBox.Checked;
 
         DialogResult = DialogResult.OK;
         Close();

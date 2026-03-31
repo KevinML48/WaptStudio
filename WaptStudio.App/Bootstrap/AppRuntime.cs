@@ -12,6 +12,7 @@ public sealed class AppRuntime
         SettingsService = new SettingsService();
         LogService = new LogService(SettingsService);
         CommandExecutionService = new CommandExecutionService();
+        WaptSessionService = new WaptSessionService();
         HistoryService = new HistoryService();
         PackageClassificationService = new PackageClassificationService();
         PackageInspectorService = new PackageInspectorService(PackageClassificationService);
@@ -27,6 +28,8 @@ public sealed class AppRuntime
     public ILogService LogService { get; }
 
     public ICommandExecutionService CommandExecutionService { get; }
+
+    public WaptSessionService WaptSessionService { get; }
 
     public IHistoryService HistoryService { get; }
 
