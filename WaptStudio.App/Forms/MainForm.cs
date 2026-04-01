@@ -152,6 +152,7 @@ public sealed class MainForm : Form
         base.OnShown(e);
         _settings = await _runtime.LoadSettingsAsync().ConfigureAwait(true);
         BindSettingsToForm();
+
         await RefreshWaptStatusAsync().ConfigureAwait(true);
         await ShowFirstRunEnvironmentDiagnosticsAsync().ConfigureAwait(true);
         await LoadHistoryAsync().ConfigureAwait(true);
@@ -2202,7 +2203,16 @@ public sealed class MainForm : Form
         return mergedContext;
     }
 
-    private CredentialPromptOutcome PromptForCredentials(string title, string description, bool requireCertificatePassword, bool requireAdminCredentials, string confirmButtonText = "Continuer")
+    private CredentialPromptOutcome PromptForCredentials(
+        string title,
+        string description,
+        bool requireCertificatePassword,
+        bool requireAdminCredentials,
+        string confirmButtonText = "Continuer",
+        bool showRememberForSessionOption = true,
+        string certificatePasswordLabelText = "Mot de passe certificat",
+        string adminUserLabelText = "Identifiant administrateur WAPT",
+        string adminPasswordLabelText = "Mot de passe administrateur WAPT")
     {
         using var form = new CredentialPromptForm(
             title,
@@ -2210,9 +2220,12 @@ public sealed class MainForm : Form
             requireCertificatePassword,
             requireAdminCredentials,
             requireAdminCredentials,
-            showRememberForSessionOption: true,
+            showRememberForSessionOption: showRememberForSessionOption,
             rememberForSessionByDefault: !_runtime.WaptSessionService.GetSnapshot().HasAnySecrets,
-            confirmButtonText: confirmButtonText);
+            confirmButtonText: confirmButtonText,
+            certificatePasswordLabelText: certificatePasswordLabelText,
+            adminUserLabelText: adminUserLabelText,
+            adminPasswordLabelText: adminPasswordLabelText);
 
         return form.ShowDialog(this) == DialogResult.OK
             ? new CredentialPromptOutcome(form.ExecutionContext, form.RememberSecretsForSession)

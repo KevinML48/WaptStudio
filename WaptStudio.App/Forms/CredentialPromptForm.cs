@@ -31,7 +31,10 @@ public sealed class CredentialPromptForm : Form
         bool requireAdminPassword,
         bool showRememberForSessionOption = false,
         bool rememberForSessionByDefault = false,
-        string confirmButtonText = "Continuer")
+        string confirmButtonText = "Continuer",
+        string certificatePasswordLabelText = "Mot de passe certificat",
+        string adminUserLabelText = "Identifiant administrateur WAPT",
+        string adminPasswordLabelText = "Mot de passe administrateur WAPT")
     {
         _requireCertificatePassword = requireCertificatePassword;
         _requireAdminUser = requireAdminUser;
@@ -121,17 +124,17 @@ public sealed class CredentialPromptForm : Form
 
         if (_requireCertificatePassword)
         {
-            AddRow(layout, row++, "Mot de passe certificat", _certificatePasswordTextBox);
+            AddRow(layout, row++, certificatePasswordLabelText, _certificatePasswordTextBox);
         }
 
         if (_requireAdminUser)
         {
-            AddRow(layout, row++, "Identifiant administrateur WAPT", _adminUserTextBox);
+            AddRow(layout, row++, adminUserLabelText, _adminUserTextBox);
         }
 
         if (_requireAdminPassword)
         {
-            AddRow(layout, row++, "Mot de passe administrateur WAPT", _adminPasswordTextBox);
+            AddRow(layout, row++, adminPasswordLabelText, _adminPasswordTextBox);
         }
 
         if (_showRememberForSessionOption)

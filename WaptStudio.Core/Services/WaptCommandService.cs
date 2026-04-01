@@ -323,10 +323,10 @@ public sealed class WaptCommandService : IWaptCommandService
 
         return extension switch
         {
-            ".p12" => null,
             ".pem" => null,
-            ".crt" => "Le certificat .crt seul n'est pas accepte pour la signature WAPT. Utilisez un fichier .p12 ou .pem.",
-            _ => "Format de cle/certificat non supporte pour la signature WAPT. Utilisez un fichier .p12 ou .pem."
+            ".p12" => "Le format .p12 n'est pas accepte par cette commande WAPT de signature. Utilisez une cle/certificat au format .pem.",
+            ".crt" => "Le certificat .crt seul n'est pas accepte pour la signature WAPT. Utilisez un fichier .pem.",
+            _ => "Format de cle/certificat non supporte pour la signature WAPT. Utilisez un fichier .pem."
         };
     }
 

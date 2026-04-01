@@ -15,6 +15,8 @@ public sealed class SettingsForm : Form
     private static readonly Color BorderColor = Color.FromArgb(220, 227, 238);
     private static readonly Color HeadingColor = Color.FromArgb(16, 24, 40);
     private static readonly Color InfoColor = Color.FromArgb(83, 96, 120);
+    private static readonly Color WarningTextColor = Color.FromArgb(148, 55, 2);
+    private static readonly Color WarningBackgroundColor = Color.FromArgb(255, 244, 229);
 
     private readonly TextBox _catalogRootFolderTextBox = new() { Dock = DockStyle.Fill, BorderStyle = BorderStyle.FixedSingle };
     private readonly CheckBox _catalogRecursiveCheckBox = new() { Text = "Inclure tous les sous-dossiers", AutoSize = true };
@@ -40,6 +42,16 @@ public sealed class SettingsForm : Form
     private readonly TextBox _signingKeyTextBox = new() { Dock = DockStyle.Fill, BorderStyle = BorderStyle.FixedSingle };
     private readonly TextBox _uploadRepositoryTextBox = new() { Dock = DockStyle.Fill, BorderStyle = BorderStyle.FixedSingle };
     private readonly TextBox _defaultPackageFolderTextBox = new() { Dock = DockStyle.Fill, BorderStyle = BorderStyle.FixedSingle };
+    private readonly Label _signingKeyCompatibilityLabel = new()
+    {
+        AutoSize = true,
+        MaximumSize = new Size(980, 0),
+        ForeColor = WarningTextColor,
+        BackColor = WarningBackgroundColor,
+        Padding = new Padding(10, 8, 10, 8),
+        Margin = new Padding(0, 8, 0, 0),
+        Visible = false
+    };
 
     public SettingsForm(AppSettings settings)
     {
@@ -52,6 +64,8 @@ public sealed class SettingsForm : Form
         StartPosition = FormStartPosition.CenterParent;
         BackColor = SurfaceColor;
         Font = new Font("Segoe UI", 9.5F, FontStyle.Regular);
+
+        _signingKeyTextBox.TextChanged += (_, _) => RefreshSigningKeyCompatibilityMessage();
 
         InitializeComponent();
         Bind(Settings);
@@ -141,7 +155,8 @@ public sealed class SettingsForm : Form
         AddToggleField(layout, "Dry-run", "Permet de simuler les actions sans modifier reellement les fichiers.", _dryRunCheckBox);
         AddToggleField(layout, "Activer les sauvegardes", "Cree une sauvegarde avant les operations sensibles.", _backupCheckBox);
         AddToggleField(layout, "Activer la signature", "Signe automatiquement les paquets si la configuration le permet.", _signingCheckBox);
-        AddBrowseField(layout, "Cle de signature", "Certificat utilise pour signer les paquets lorsque la signature est activee.", _signingKeyTextBox, BrowseSigningKey);
+        AddBrowseField(layout, "Cle de signature", "Certificat utilise pour signer les paquets lorsque la signature est activee. Pour votre WAPT local, utilisez un fichier .pem.", _signingKeyTextBox, BrowseSigningKey);
+        layout.Controls.Add(CreateSigningKeyCompatibilityNotice());
 
         card.Controls.Add(layout);
         return card;
@@ -240,6 +255,7 @@ public sealed class SettingsForm : Form
         _cacheDirectoryTextBox.Text = settings.CacheDirectory ?? string.Empty;
         _backupsDirectoryTextBox.Text = settings.BackupsDirectory ?? string.Empty;
         _signingKeyTextBox.Text = settings.SigningKeyPath ?? string.Empty;
+        RefreshSigningKeyCompatibilityMessage();
         _uploadRepositoryTextBox.Text = settings.UploadRepositoryUrl ?? string.Empty;
         _defaultPackageFolderTextBox.Text = settings.DefaultPackageFolder ?? string.Empty;
     }
@@ -307,7 +323,7 @@ public sealed class SettingsForm : Form
     {
         using var dialog = new OpenFileDialog
         {
-            Filter = "Certificats WAPT (*.p12;*.pem)|*.p12;*.pem|Tous les fichiers (*.*)|*.*",
+            Filter = "Certificats PEM (*.pem)|*.pem|Certificats P12 (*.p12)|*.p12|Tous les fichiers (*.*)|*.*",
             Title = "Selectionner le certificat de signature WAPT"
         };
 
@@ -470,6 +486,31 @@ public sealed class SettingsForm : Form
 
         block.Controls.Add(row, 0, 2);
         return block;
+    }
+
+    private Control CreateSigningKeyCompatibilityNotice()
+    {
+        var panel = new Panel
+        {
+            Dock = DockStyle.Top,
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            BackColor = CardColor,
+            Margin = new Padding(0, -4, 0, 18),
+            Padding = new Padding(0)
+        };
+
+        _signingKeyCompatibilityLabel.Text = "Attention: la signature WAPT de cette installation refuse les certificats .p12. Configurez une cle/certificat .pem pour eviter un echec immediat de signature.";
+        panel.Controls.Add(_signingKeyCompatibilityLabel);
+        return panel;
+    }
+
+    private void RefreshSigningKeyCompatibilityMessage()
+    {
+        var signingKeyPath = _signingKeyTextBox.Text.Trim();
+        var isP12 = string.Equals(Path.GetExtension(signingKeyPath), ".p12", StringComparison.OrdinalIgnoreCase);
+
+        _signingKeyCompatibilityLabel.Visible = isP12;
     }
 
     private static Button CreatePrimaryButton(string text)

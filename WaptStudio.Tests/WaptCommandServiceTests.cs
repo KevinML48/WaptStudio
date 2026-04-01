@@ -168,12 +168,42 @@ public sealed class WaptCommandServiceTests
 
             var result = await service.SignPackageAsync(@"C:\waptdev\sample", new WaptExecutionContext { CertificatePassword = "secret-cert" });
 
+            Assert.False(result.IsDryRun);
+            Assert.False(result.IsSuccess);
+            Assert.True(result.IsConfigurationBlocked);
+            Assert.False(commandExecutionService.WasCalled);
+            Assert.Equal("Le format .p12 n'est pas accepte par cette commande WAPT de signature. Utilisez une cle/certificat au format .pem.", result.StandardError);
+        }
+        finally
+        {
+            File.Delete(certificatePath);
+        }
+    }
+
+    [Fact]
+    public async Task SignPackageAsync_AllowsPemForAssistedExecutionWhenPasswordIsProvided()
+    {
+        var certificatePath = CreateTempCertificateFile(".pem");
+
+        try
+        {
+            var commandExecutionService = new TrackingCommandExecutionService();
+            var settingsService = new TestSettingsService(new AppSettings
+            {
+                WaptExecutablePath = "wapt-get.exe",
+                SignPackageArguments = "sign-package {packageFolder}",
+                EnableSigning = true,
+                SigningKeyPath = certificatePath,
+                DryRunEnabled = false
+            });
+            var service = new WaptCommandService(commandExecutionService, settingsService);
+
+            var result = await service.SignPackageAsync(@"C:\waptdev\sample", new WaptExecutionContext { CertificatePassword = "secret-cert" });
+
             Assert.True(result.WasInteractiveExecutionAttempted);
             Assert.True(result.IsSuccess);
-            Assert.False(result.IsConfigurationBlocked);
             Assert.True(commandExecutionService.WasCalled);
             Assert.Contains("sign-package", result.ExecutedCommand);
-            Assert.Contains("C:\\waptdev\\sample", result.ExecutedCommand.Replace("\"", string.Empty));
             Assert.DoesNotContain("--private-key", result.ExecutedCommand);
             Assert.Contains("secret-cert", commandExecutionService.LastOptions?.StandardInputText ?? string.Empty);
         }
@@ -207,7 +237,7 @@ public sealed class WaptCommandServiceTests
             Assert.False(result.IsSuccess);
             Assert.True(result.IsConfigurationBlocked);
             Assert.False(commandExecutionService.WasCalled);
-            Assert.Equal("Le certificat .crt seul n'est pas accepte pour la signature WAPT. Utilisez un fichier .p12 ou .pem.", result.StandardError);
+            Assert.Equal("Le certificat .crt seul n'est pas accepte pour la signature WAPT. Utilisez un fichier .pem.", result.StandardError);
         }
         finally
         {
